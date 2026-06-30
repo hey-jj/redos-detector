@@ -70,10 +70,10 @@ fn score_string(score: Score) -> String {
 }
 
 /// Renders `result` as text.
+///
+/// A negative `results_limit` is treated as `0`.
 pub fn to_friendly(result: &Report, config: &ToFriendlyConfig) -> String {
-    if config.results_limit < 0.0 {
-        panic!("`resultsLimit` must be > 0.");
-    }
+    let results_limit = config.results_limit.max(0.0);
     let score_str = score_string(result.score);
 
     if result.is_safe() && !config.always_include_trails {
@@ -104,10 +104,10 @@ pub fn to_friendly(result: &Report, config: &ToFriendlyConfig) -> String {
         }
         output_lines.push(parts.join(" "));
     } else {
-        let limit = if config.results_limit.is_infinite() {
+        let limit = if results_limit.is_infinite() {
             result.trails.len()
         } else {
-            config.results_limit as usize
+            results_limit as usize
         };
         let result_blocks: Vec<String> =
             result.trails.iter().take(limit).map(render_block).collect();
@@ -118,7 +118,7 @@ pub fn to_friendly(result: &Report, config: &ToFriendlyConfig) -> String {
             score_str
         ));
 
-        if config.results_limit > 0.0 {
+        if results_limit > 0.0 {
             output_lines.push(String::new());
             let plural = if result.trails.len() > 1 { "s" } else { "" };
             let singular = if result.trails.len() == 1 { "s" } else { "" };
@@ -131,7 +131,7 @@ pub fn to_friendly(result: &Report, config: &ToFriendlyConfig) -> String {
             if let Some(error) = result.error {
                 output_lines.push(error_message(error).to_string());
             }
-            if result.trails.len() as f64 > config.results_limit {
+            if result.trails.len() as f64 > results_limit {
                 output_lines
                     .push("There are more results than this but hit results limit.".to_string());
             }

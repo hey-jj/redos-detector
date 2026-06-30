@@ -12,14 +12,16 @@
 //! renders a result as text. [`downgrade_pattern`] rewrites unsupported patterns
 //! into supported ones.
 //!
-//! Invalid input is reported by panicking with the same message an ECMA-262
-//! engine would surface. Validation errors, unsupported flags, oversized
-//! quantifier counts, and references that need downgrading all panic.
+//! Recoverable input problems return [`Error`]: an unsupported flag, a
+//! conflicting config, or a pattern that fails to parse. A successful check
+//! returns a [`Report`]. When the analysis hits a cap the report carries an
+//! [`AnalysisLimit`] in its `error` field, which is a different axis from input
+//! validation.
 //!
 //! ```
 //! use redos_detector::{is_safe, Config};
 //!
-//! let result = is_safe("(a+)+$", "", &Config::default());
+//! let result = is_safe("(a+)+$", "", &Config::default()).unwrap();
 //! assert!(!result.is_safe());
 //! ```
 #![forbid(unsafe_code)]
@@ -174,7 +176,7 @@ pub enum Score {
 }
 
 /// The result of a check.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Report {
     /// The error, or `None` when safe.
     pub error: Option<AnalysisLimit>,
@@ -195,6 +197,60 @@ impl Report {
         self.error.is_none()
     }
 }
+
+/// An input error from a public entry point.
+///
+/// This covers recoverable problems with the call: a bad flag, a conflicting
+/// config, or a pattern that fails to parse. It is separate from
+/// [`AnalysisLimit`], which reports that the analysis hit a cap and is part of
+/// a successful [`Report`].
+///
+/// Match with a wildcard arm. New variants may be added in a future version.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Error {
+    /// A flag letter outside `u g s y i d m`.
+    UnsupportedFlag(char),
+    /// `case_insensitive` was set together with `unicode`.
+    CaseInsensitiveWithUnicode,
+    /// `atomic_group_offsets` was set together with `downgrade_pattern: true`.
+    AtomicGroupOffsetsWithDowngrade,
+    /// `timeout` was zero or negative.
+    InvalidTimeout,
+    /// `max_score` was negative.
+    InvalidMaxScore,
+    /// `max_steps` was zero or negative.
+    InvalidMaxSteps,
+    /// The pattern failed to parse. The string is the parser message.
+    Parse(String),
+    /// `downgrade_pattern` was off and the pattern has no start anchor.
+    MissingStartAnchor,
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::UnsupportedFlag(flag) => write!(f, "Unsupported flag: {}", flag),
+            Error::CaseInsensitiveWithUnicode => {
+                write!(f, "`caseInsensitive` cannot be used with `unicode`.")
+            }
+            Error::AtomicGroupOffsetsWithDowngrade => write!(
+                f,
+                "`atomicGroupOffsets` cannot be used with `downgradePattern: true`."
+            ),
+            Error::InvalidTimeout => write!(f, "`timeout` must be a positive number."),
+            Error::InvalidMaxScore => write!(f, "`maxScore` must be a positive number or 0."),
+            Error::InvalidMaxSteps => write!(f, "`maxSteps` must be a positive number."),
+            Error::Parse(message) => write!(f, "{}", message),
+            Error::MissingStartAnchor => write!(
+                f,
+                "Pattern is not bounded at the start and needs downgrading. See the `downgradePattern` option."
+            ),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
 
 /// Options for [`is_safe`] and [`is_safe_pattern`].
 #[derive(Clone, Debug)]
@@ -248,28 +304,38 @@ impl Clock for SystemClock {
     }
 }
 
-/// Checks whether `regex` and its inline flags are safe from ReDoS.
+/// Parses a flag string into the four matching options.
 ///
-/// `regex` is a `source/flags` pair like `"a+a+/i"`. Flags are read from the
-/// part after the last `/`. The flags `u i s m` change matching; `g y d` are
-/// accepted and ignored. An unsupported flag panics.
-pub fn is_safe(source: &str, flags: &str, config: &Config) -> Report {
+/// The flags `u i s m` change matching. `g y d` are accepted and ignored. An
+/// unsupported letter returns [`Error::UnsupportedFlag`].
+fn parse_flags(flags: &str) -> Result<(bool, bool, bool, bool), Error> {
     let mut unicode = false;
     let mut case_insensitive = false;
     let mut dot_all = false;
     let mut multi_line = false;
     for flag in flags.chars() {
-        if !matches!(flag, 'u' | 'g' | 's' | 'y' | 'i' | 'd' | 'm') {
-            panic!("Unsupported flag: {}", flag);
-        }
         match flag {
             'u' => unicode = true,
             'i' => case_insensitive = true,
             's' => dot_all = true,
             'm' => multi_line = true,
-            _ => {}
+            'g' | 'y' | 'd' => {}
+            other => return Err(Error::UnsupportedFlag(other)),
         }
     }
+    Ok((unicode, case_insensitive, dot_all, multi_line))
+}
+
+/// Checks whether `source` and its inline `flags` are safe from ReDoS.
+///
+/// Flags are read from `flags`, the part after a regex literal's closing `/`.
+/// The flags `u i s m` change matching. `g y d` are accepted and ignored. The
+/// flags override the matching options on `config`.
+///
+/// Returns [`Error`] on an unsupported flag, a conflicting config, or a pattern
+/// that fails to parse.
+pub fn is_safe(source: &str, flags: &str, config: &Config) -> Result<Report, Error> {
+    let (unicode, case_insensitive, dot_all, multi_line) = parse_flags(flags)?;
 
     let merged = Config {
         case_insensitive,
@@ -282,29 +348,35 @@ pub fn is_safe(source: &str, flags: &str, config: &Config) -> Report {
 }
 
 /// Checks whether `input_pattern` is safe from ReDoS using explicit options.
-pub fn is_safe_pattern(input_pattern: &str, config: &Config) -> Report {
+///
+/// Returns [`Error`] on a conflicting config or a pattern that fails to parse.
+pub fn is_safe_pattern(input_pattern: &str, config: &Config) -> Result<Report, Error> {
     is_safe_pattern_with_clock(input_pattern, config, SystemClock)
 }
 
-fn is_safe_pattern_with_clock<C: Clock>(input_pattern: &str, config: &Config, clock: C) -> Report {
+fn is_safe_pattern_with_clock<C: Clock>(
+    input_pattern: &str,
+    config: &Config,
+    clock: C,
+) -> Result<Report, Error> {
     if config.case_insensitive && config.unicode {
-        panic!("`caseInsensitive` cannot be used with `unicode`.");
+        return Err(Error::CaseInsensitiveWithUnicode);
     }
     if config.downgrade_pattern && config.atomic_group_offsets.is_some() {
-        panic!("`atomicGroupOffsets` cannot be used with `downgradePattern: true`.");
+        return Err(Error::AtomicGroupOffsetsWithDowngrade);
     }
     if config.timeout <= 0.0 {
-        panic!("`timeout` must be a positive number.");
+        return Err(Error::InvalidTimeout);
     }
     if config.max_score < 0.0 {
-        panic!("`maxScore` must be a positive number or 0.");
+        return Err(Error::InvalidMaxScore);
     }
     if config.max_steps <= 0.0 {
-        panic!("`maxSteps` must be a positive number.");
+        return Err(Error::InvalidMaxSteps);
     }
 
     let (pattern, atomic_group_offsets) = if config.downgrade_pattern {
-        let downgraded = downgrade_pattern(input_pattern, config.unicode);
+        let downgraded = downgrade_pattern(input_pattern, config.unicode)?;
         (downgraded.pattern, downgraded.atomic_group_offsets)
     } else {
         (
@@ -315,13 +387,10 @@ fn is_safe_pattern_with_clock<C: Clock>(input_pattern: &str, config: &Config, cl
 
     let pattern_downgraded = config.downgrade_pattern && input_pattern != pattern;
 
-    let ast = match parse::parse(&pattern, config.unicode) {
-        Ok(ast) => ast,
-        Err(e) => panic!("{}", e.0),
-    };
+    let ast = parse::parse(&pattern, config.unicode).map_err(|e| Error::Parse(e.0))?;
 
     if !config.downgrade_pattern && is_missing_start_anchor(&ast) {
-        panic!("Pattern is not bounded at the start and needs downgrading. See the `downgradePattern` option.");
+        return Err(Error::MissingStartAnchor);
     }
 
     let result = collect_results(
@@ -338,7 +407,7 @@ fn is_safe_pattern_with_clock<C: Clock>(input_pattern: &str, config: &Config, cl
         clock,
     );
 
-    build_result(result, pattern, pattern_downgraded)
+    Ok(build_result(result, pattern, pattern_downgraded))
 }
 
 fn build_result(
@@ -474,13 +543,13 @@ mod api_tests {
             max_score: 2.0,
             ..Config::default()
         };
-        assert_eq!(is_safe("^a?a?$", "", &config).error, None);
+        assert_eq!(is_safe("^a?a?$", "", &config).unwrap().error, None);
         let config = Config {
             max_score: 1.0,
             ..Config::default()
         };
         assert_eq!(
-            is_safe("^a?a?$", "", &config).error,
+            is_safe("^a?a?$", "", &config).unwrap().error,
             Some(AnalysisLimit::HitMaxScore)
         );
     }
@@ -492,7 +561,7 @@ mod api_tests {
             ..Config::default()
         };
         assert_eq!(
-            is_safe("a?a?a?", "", &config).error,
+            is_safe("a?a?a?", "", &config).unwrap().error,
             Some(AnalysisLimit::HitMaxSteps)
         );
     }
@@ -506,79 +575,83 @@ mod api_tests {
         let clock = FakeClock {
             time: Cell::new(0.0),
         };
-        let result = is_safe_pattern_with_clock("a?a?a?", &config, clock);
+        let result = is_safe_pattern_with_clock("a?a?a?", &config, clock).unwrap();
         assert_eq!(result.error, Some(AnalysisLimit::TimedOut));
     }
 
     #[test]
-    #[should_panic(expected = "`maxScore` must be a positive number or 0.")]
     fn rejects_negative_max_score() {
         let config = Config {
             max_score: -1.0,
             ..Config::default()
         };
-        let _ = is_safe("a", "", &config);
+        assert_eq!(is_safe("a", "", &config), Err(Error::InvalidMaxScore));
     }
 
     #[test]
-    #[should_panic(expected = "`timeout` must be a positive number.")]
     fn rejects_zero_timeout() {
         let config = Config {
             timeout: 0.0,
             ..Config::default()
         };
-        let _ = is_safe("a", "", &config);
+        assert_eq!(is_safe("a", "", &config), Err(Error::InvalidTimeout));
     }
 
     #[test]
-    #[should_panic(expected = "`maxSteps` must be a positive number.")]
     fn rejects_zero_max_steps() {
         let config = Config {
             max_steps: 0.0,
             ..Config::default()
         };
-        let _ = is_safe("a", "", &config);
+        assert_eq!(is_safe("a", "", &config), Err(Error::InvalidMaxSteps));
     }
 
     #[test]
-    #[should_panic(expected = "Unsupported flag: z")]
     fn rejects_unsupported_flag() {
-        let _ = is_safe("a", "z", &Config::default());
+        assert_eq!(
+            is_safe("a", "z", &Config::default()),
+            Err(Error::UnsupportedFlag('z'))
+        );
     }
 
     #[test]
     fn accepts_supported_flags() {
         for flag in ["u", "g", "s", "y", "i", "d", "m"] {
-            let _ = is_safe("a", flag, &Config::default());
+            assert!(is_safe("a", flag, &Config::default()).is_ok());
         }
     }
 
     #[test]
-    #[should_panic(expected = "`caseInsensitive` cannot be used with `unicode`.")]
     fn rejects_case_insensitive_with_unicode() {
         let config = Config {
             case_insensitive: true,
             unicode: true,
             ..Config::default()
         };
-        let _ = is_safe_pattern("a", &config);
+        assert_eq!(
+            is_safe_pattern("a", &config),
+            Err(Error::CaseInsensitiveWithUnicode)
+        );
     }
 
     #[test]
-    #[should_panic(expected = "iterations outside JS safe integer range")]
     fn rejects_iterations_above_max_safe_integer() {
-        let _ = is_safe_pattern("a{0,9007199254740992}", &Config::default());
+        let err = is_safe_pattern("a{0,9007199254740992}", &Config::default()).unwrap_err();
+        assert!(matches!(err, Error::Parse(message)
+            if message.contains("iterations outside JS safe integer range")));
     }
 
     #[test]
-    #[should_panic(expected = "`atomicGroupOffsets` cannot be used with `downgradePattern: true`.")]
     fn rejects_atomic_offsets_with_downgrade() {
         let config = Config {
             downgrade_pattern: true,
             atomic_group_offsets: Some(HashSet::new()),
             ..Config::default()
         };
-        let _ = is_safe_pattern("", &config);
+        assert_eq!(
+            is_safe_pattern("", &config),
+            Err(Error::AtomicGroupOffsetsWithDowngrade)
+        );
     }
 
     #[test]
@@ -590,17 +663,35 @@ mod api_tests {
             atomic_group_offsets: Some(offsets),
             ..Config::default()
         };
-        assert!(is_safe_pattern("^(a?)a?$", &config).trails.is_empty());
+        assert!(is_safe_pattern("^(a?)a?$", &config)
+            .unwrap()
+            .trails
+            .is_empty());
     }
 
     #[test]
     fn no_options_pattern() {
-        assert_eq!(is_safe_pattern("a", &Config::default()).error, None);
+        assert_eq!(
+            is_safe_pattern("a", &Config::default()).unwrap().error,
+            None
+        );
     }
 
     #[test]
     fn flags_override_config() {
         // The 'i' flag turns on case-insensitive matching regardless of config.
-        let _ = is_safe("a", "i", &inf_steps());
+        assert!(is_safe("a", "i", &inf_steps()).is_ok());
+    }
+
+    #[test]
+    fn missing_start_anchor_without_downgrade_errors() {
+        let config = Config {
+            downgrade_pattern: false,
+            ..Config::default()
+        };
+        assert_eq!(
+            is_safe_pattern("a", &config),
+            Err(Error::MissingStartAnchor)
+        );
     }
 }

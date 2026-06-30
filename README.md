@@ -21,7 +21,7 @@ redos-detector = "0.1"
 ```rust
 use redos_detector::{is_safe, Config};
 
-let result = is_safe("(a+)+$", "", &Config::default());
+let result = is_safe("(a+)+$", "", &Config::default()).unwrap();
 if !result.is_safe() {
     println!("{}", redos_detector::to_friendly(&result, &Default::default()));
 }
@@ -40,9 +40,10 @@ Backreferences to unmatched groups are treated as the empty string, following
 JavaScript. Case folding uses the ECMA-262 simple-uppercase rule in non-unicode
 mode.
 
-Invalid input panics with the message an engine would surface: validation errors,
-unsupported flags, oversized quantifier counts, and references that need
-downgrading.
+Recoverable input problems return `Error`: an unsupported flag, a conflicting
+config, or a pattern that fails to parse. A successful check returns a `Report`.
+When the analysis hits a cap the report carries an `AnalysisLimit` in its `error`
+field, a separate axis from input validation.
 
 ## License
 

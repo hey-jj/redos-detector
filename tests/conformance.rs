@@ -2,8 +2,9 @@
 //!
 //! Each row runs `is_safe(source, flags, {max_score: inf, max_steps: 5000})` and
 //! checks the safe/unsafe verdict, the score for the exact cases, and the
-//! downgrade cross-checks. The throw cases are checked by catching the panic the
-//! library raises.
+//! downgrade cross-checks. A missing start anchor with downgrade off returns
+//! `Error::MissingStartAnchor`. An unsupported reference with downgrade off
+//! panics, so that case catches the panic.
 //!
 //! `exact_trail_counts` pins the number of trails per pattern against the
 //! canonical table. Verdict-only checks miss drift that changes trail
@@ -13,7 +14,7 @@
 mod cases_data;
 
 use cases_data::{Exp, CASES, TRAIL_COUNTS};
-use redos_detector::{downgrade_pattern, is_safe, Config, Report, Score};
+use redos_detector::{downgrade_pattern, is_safe, Config, Error, Report, Score};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 fn run(source: &str, flags: &str) -> Report {
@@ -22,7 +23,7 @@ fn run(source: &str, flags: &str) -> Report {
         max_steps: 5000.0,
         ..Config::default()
     };
-    is_safe(source, flags, &config)
+    is_safe(source, flags, &config).expect("case should not error")
 }
 
 fn panic_message<F: FnOnce()>(f: F) -> Option<String> {
@@ -102,29 +103,30 @@ fn behavior_table() {
 
         // Downgrade cross-check.
         let unicode = case.flags.contains('u');
-        let downgraded = downgrade_pattern(case.source, unicode);
+        let downgraded =
+            downgrade_pattern(case.source, unicode).expect("downgrade should not error");
         let needed_downgrade = downgraded.pattern != case.source;
 
         if case.missing_anchor {
             if !needed_downgrade {
                 failures.push(format!("{label}: expected downgrade to be needed"));
             }
-            let msg = panic_message(|| {
-                let config = Config {
-                    downgrade_pattern: false,
-                    ..Config::default()
-                };
-                let _ = is_safe(case.source, case.flags, &config);
-            });
-            match msg {
-                Some(m)
-                    if m == "Pattern is not bounded at the start and needs downgrading. See the `downgradePattern` option." => {}
+            // With downgrade off, a missing start anchor is a recoverable error.
+            let config = Config {
+                downgrade_pattern: false,
+                ..Config::default()
+            };
+            match is_safe(case.source, case.flags, &config) {
+                Err(Error::MissingStartAnchor) => {}
                 other => failures.push(format!(
-                    "{label}: expected start-anchor throw, got {:?}",
+                    "{label}: expected MissingStartAnchor, got {:?}",
                     other
                 )),
             }
         } else if needed_downgrade {
+            // With downgrade off, an unsupported reference panics deep in the
+            // reader. This is a precondition violation of `downgrade_pattern:
+            // false`, so it stays a panic rather than a recoverable error.
             let msg = panic_message(|| {
                 let config = Config {
                     downgrade_pattern: false,
@@ -160,7 +162,7 @@ fn exact_trail_counts() {
 
     let mut failures: Vec<String> = Vec::new();
     for case in TRAIL_COUNTS {
-        let result = is_safe(case.source, case.flags, &config);
+        let result = is_safe(case.source, case.flags, &config).expect("case should not error");
         if result.trails.len() != case.trails {
             failures.push(format!(
                 "/{}/{}: expected {} trails, got {}",
@@ -192,14 +194,14 @@ fn no_anchor_unbounded_side_does_not_inflate() {
         max_steps: 5000.0,
         ..Config::default()
     };
-    let result = is_safe("^(aa)*a?(aaa)?", "", &config);
+    let result = is_safe("^(aa)*a?(aaa)?", "", &config).unwrap();
     assert_eq!(result.trails.len(), 2);
     assert_eq!(result.score, Score::Finite(2));
     assert!(result.is_safe());
     assert_eq!(result.error, None);
 
     // The end-anchored form reaches a bounded end, so it keeps its trails.
-    let control = is_safe("^(aa)*(aaa)?$", "", &config);
+    let control = is_safe("^(aa)*(aaa)?$", "", &config).unwrap();
     assert_eq!(control.trails.len(), 4);
     assert_eq!(control.score, Score::Finite(3));
 }

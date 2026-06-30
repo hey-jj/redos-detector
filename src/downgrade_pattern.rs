@@ -240,19 +240,25 @@ fn check_children(body: &[RcNode], may_be_skipped: bool) -> AnchorCheck {
 }
 
 /// Downgrades `pattern` if needed.
-pub fn downgrade_pattern(pattern: &str, unicode: bool) -> DowngradedRegexPattern {
+///
+/// Returns [`Error::Parse`](crate::Error::Parse) when the pattern fails to
+/// parse.
+pub fn downgrade_pattern(
+    pattern: &str,
+    unicode: bool,
+) -> Result<DowngradedRegexPattern, crate::Error> {
     let mut last = DowngradedRegexPattern {
         atomic_group_offsets: HashSet::new(),
         pattern: pattern.to_string(),
     };
     loop {
-        let (need_rerun, result) = run(&last, unicode);
+        let (need_rerun, result) = run(&last, unicode)?;
         last = result;
         if !need_rerun {
             break;
         }
     }
-    last
+    Ok(last)
 }
 
 struct GroupEntry {
@@ -276,8 +282,11 @@ fn lookahead_only_contains_group(lookahead: &RcNode, group: &RcNode) -> bool {
     }
 }
 
-fn run(last: &DowngradedRegexPattern, unicode: bool) -> (bool, DowngradedRegexPattern) {
-    let ast = parse(&last.pattern, unicode).unwrap_or_else(|e| panic!("{}", e.0));
+fn run(
+    last: &DowngradedRegexPattern,
+    unicode: bool,
+) -> Result<(bool, DowngradedRegexPattern), crate::Error> {
+    let ast = parse(&last.pattern, unicode).map_err(|e| crate::Error::Parse(e.0))?;
     let needs_wrapping_in_group = matches!(ast.kind, NodeKind::Disjunction { .. });
 
     let mut walker = Walker {
@@ -356,13 +365,13 @@ fn run(last: &DowngradedRegexPattern, unicode: bool) -> (bool, DowngradedRegexPa
         atomic_group_offsets = shift_offsets(&atomic_group_offsets, -1, shift);
     }
 
-    (
+    Ok((
         need_to_rerun,
         DowngradedRegexPattern {
             atomic_group_offsets,
             pattern: new_pattern,
         },
-    )
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]

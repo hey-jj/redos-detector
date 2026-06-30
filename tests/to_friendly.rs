@@ -272,13 +272,19 @@ fn unsafe_with_trails() {
 }
 
 #[test]
-#[should_panic(expected = "`resultsLimit` must be > 0.")]
-fn negative_results_limit_panics() {
+fn negative_results_limit_clamps_to_zero() {
     let r = result(
         Some(AnalysisLimit::HitMaxSteps),
         Score::Infinite,
         true,
         mock_trails(),
     );
-    let _ = to_friendly(&r, &cfg(false, -1.0));
+    // A negative limit is treated as 0, so no trails are printed.
+    let zero = to_friendly(&r, &cfg(false, 0.0));
+    let negative = to_friendly(&r, &cfg(false, -1.0));
+    assert_eq!(negative, zero);
+    assert_eq!(
+        negative,
+        "Pattern was downgraded to `pattern`.\nRegex is not safe. There could be infinite backtracks."
+    );
 }

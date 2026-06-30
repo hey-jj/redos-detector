@@ -6,7 +6,7 @@ fn check(source: &str, flags: &str) -> redos_detector::Report {
         max_steps: 5000.0,
         ..Config::default()
     };
-    is_safe(source, flags, &config)
+    is_safe(source, flags, &config).unwrap()
 }
 
 #[test]

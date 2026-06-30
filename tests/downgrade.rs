@@ -3,7 +3,7 @@
 use redos_detector::downgrade_pattern;
 
 fn expect(pattern: &str, expected_pattern: &str, expected_offsets: &[usize]) {
-    let result = downgrade_pattern(pattern, false);
+    let result = downgrade_pattern(pattern, false).unwrap();
     assert_eq!(result.pattern, expected_pattern, "pattern for {pattern:?}");
     let mut offsets: Vec<usize> = result.atomic_group_offsets.into_iter().collect();
     offsets.sort_unstable();
