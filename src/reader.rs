@@ -34,14 +34,12 @@ pub(crate) type BoxReader<T, R> = Box<dyn Reader<T, R>>;
 
 /// A reader that yields nothing and returns the default value.
 pub(crate) struct EmptyReader<R> {
-    done: bool,
     value: Option<R>,
 }
 
 impl<R: Default> Default for EmptyReader<R> {
     fn default() -> Self {
         EmptyReader {
-            done: false,
             value: Some(R::default()),
         }
     }
@@ -49,7 +47,6 @@ impl<R: Default> Default for EmptyReader<R> {
 
 impl<T, R> Reader<T, R> for EmptyReader<R> {
     fn next(&mut self) -> Step<T, R> {
-        self.done = true;
         Step::Done(self.value.take().expect("empty reader polled twice"))
     }
 }

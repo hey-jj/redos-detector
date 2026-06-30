@@ -8,6 +8,7 @@ use crate::code_point::{build_code_point_ranges, to_upper_case_code_point};
 use crate::our_range::{invert_ranges, OurRange};
 use crate::reader::{build_array_reader, chain_readers, empty_reader, BoxReader};
 use std::rc::Rc;
+use std::sync::LazyLock;
 
 /// A lookaround marker on a split.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -183,11 +184,14 @@ fn build_class_escape_reader(node: &RcNode, value: ClassEscape) -> CharacterRead
     }])
 }
 
-/// Returns the code point ranges a `\d \D \w \W \s \S` escape matches.
-pub(crate) fn class_escape_ranges(value: ClassEscape) -> Vec<OurRange> {
-    let d: Vec<OurRange> = vec![(48.0, 57.0)];
-    let w: Vec<OurRange> = vec![(48.0, 57.0), (65.0, 90.0), (95.0, 95.0), (97.0, 122.0)];
-    let s: Vec<OurRange> = vec![
+// The six `\d \D \w \W \s \S` range sets are constant. Build them once. The
+// inverses cost a full range walk, so caching them keeps reader construction
+// off the hot path.
+static D_RANGES: LazyLock<Vec<OurRange>> = LazyLock::new(|| vec![(48.0, 57.0)]);
+static W_RANGES: LazyLock<Vec<OurRange>> =
+    LazyLock::new(|| vec![(48.0, 57.0), (65.0, 90.0), (95.0, 95.0), (97.0, 122.0)]);
+static S_RANGES: LazyLock<Vec<OurRange>> = LazyLock::new(|| {
+    vec![
         (9.0, 9.0),
         (10.0, 10.0),
         (11.0, 11.0),
@@ -202,14 +206,21 @@ pub(crate) fn class_escape_ranges(value: ClassEscape) -> Vec<OurRange> {
         (8287.0, 8287.0),
         (12288.0, 12288.0),
         (65279.0, 65279.0),
-    ];
+    ]
+});
+static D_UPPER_RANGES: LazyLock<Vec<OurRange>> = LazyLock::new(|| invert_ranges(&D_RANGES));
+static W_UPPER_RANGES: LazyLock<Vec<OurRange>> = LazyLock::new(|| invert_ranges(&W_RANGES));
+static S_UPPER_RANGES: LazyLock<Vec<OurRange>> = LazyLock::new(|| invert_ranges(&S_RANGES));
+
+/// Returns the code point ranges a `\d \D \w \W \s \S` escape matches.
+pub(crate) fn class_escape_ranges(value: ClassEscape) -> Vec<OurRange> {
     match value {
-        ClassEscape::D => d,
-        ClassEscape::DUpper => invert_ranges(&d),
-        ClassEscape::W => w,
-        ClassEscape::WUpper => invert_ranges(&w),
-        ClassEscape::S => s,
-        ClassEscape::SUpper => invert_ranges(&s),
+        ClassEscape::D => D_RANGES.clone(),
+        ClassEscape::DUpper => D_UPPER_RANGES.clone(),
+        ClassEscape::W => W_RANGES.clone(),
+        ClassEscape::WUpper => W_UPPER_RANGES.clone(),
+        ClassEscape::S => S_RANGES.clone(),
+        ClassEscape::SUpper => S_UPPER_RANGES.clone(),
     }
 }
 

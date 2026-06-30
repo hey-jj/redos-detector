@@ -44,8 +44,7 @@ struct Parser<'a> {
 
 /// Parses `pattern` into an AST. `unicode` selects unicode mode.
 pub(crate) fn parse(pattern: &str, unicode: bool) -> Result<RcNode, ParseError> {
-    let source = if pattern.is_empty() { "(?:)" } else { pattern };
-    let units: Vec<u16> = source.encode_utf16().collect();
+    let units: Vec<u16> = pattern.encode_utf16().collect();
 
     let mut parser = Parser {
         units: &units,
@@ -443,18 +442,15 @@ impl<'a> Parser<'a> {
 
     fn parse_uint(&self, from: usize, to: usize) -> Option<u64> {
         let mut value: u64 = 0;
-        let mut overflow = false;
         for &u in &self.units[from..to] {
             let digit = (u as u8 - b'0') as u64;
-            match value.checked_mul(10).and_then(|v| v.checked_add(digit)) {
-                Some(v) => value = v,
-                None => {
-                    overflow = true;
-                    value = u64::MAX;
-                }
-            }
+            // Saturate on overflow. The caller rejects any value above
+            // MAX_SAFE_INTEGER, so u64::MAX still triggers the correct error.
+            value = value
+                .checked_mul(10)
+                .and_then(|v| v.checked_add(digit))
+                .unwrap_or(u64::MAX);
         }
-        let _ = overflow;
         Some(value)
     }
 
@@ -983,9 +979,11 @@ mod tests {
     }
 
     #[test]
-    fn empty_pattern_becomes_noncapturing() {
+    fn empty_pattern_is_empty_alternative() {
         let ast = parse("", false).unwrap();
-        assert_eq!(ast.raw, "(?:)");
+        assert!(matches!(&ast.kind, NodeKind::Alternative { body } if body.is_empty()));
+        assert_eq!(ast.range, (0, 0));
+        assert_eq!(ast.raw, "");
     }
 
     #[test]

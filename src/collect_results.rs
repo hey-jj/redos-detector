@@ -196,10 +196,8 @@ pub(crate) fn collect_results<C: Clock>(input: CollectInput, clock: C) -> Collec
                 let trail = EnhancedTrail::new(value, Rc::clone(&empty_cache));
 
                 if work < WORK_LIMIT {
-                    let existing_items: Vec<Rc<RefCell<EnhancedTrail>>> =
-                        trails_tree.items().into_iter().cloned().collect();
                     let trail_len = trail.borrow().length;
-                    for existing in &existing_items {
+                    for existing in trails_tree.iter_items() {
                         if existing.borrow().length == trail_len {
                             work += trail_len as u64;
                             if work >= WORK_LIMIT {

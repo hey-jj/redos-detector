@@ -80,6 +80,11 @@ impl<T, K: Eq + Hash + Clone> Tree<T, K> {
     pub(crate) fn items(&self) -> Vec<&T> {
         self.results.iter().filter_map(|r| r.as_ref()).collect()
     }
+
+    /// Iterates the live values in insertion order without allocating.
+    pub(crate) fn iter_items(&self) -> impl Iterator<Item = &T> {
+        self.results.iter().filter_map(|r| r.as_ref())
+    }
 }
 
 #[cfg(test)]
