@@ -14,11 +14,15 @@
 mod arrays;
 mod ast;
 mod character_groups;
+mod character_reader;
 mod code_point;
 mod map;
+mod node_extra;
 mod once;
 mod our_range;
 mod parse;
+mod quantifier;
+mod reader;
 mod result_cache;
 mod sets;
 mod tree;
