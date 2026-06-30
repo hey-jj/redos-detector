@@ -1,0 +1,10 @@
+[package]
+name = "redos-detector"
+version = "0.1.0"
+edition = "2021"
+description = "static ReDoS vulnerability analysis of regex patterns"
+license = "MIT"
+repository = "https://github.com/hey-jj/redos-detector"
+readme = "README.md"
+
+[dependencies]
