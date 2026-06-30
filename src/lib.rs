@@ -265,6 +265,14 @@ pub fn is_safe(source: &str, flags: &str, config: &Config) -> RedosDetectorResul
 
 /// Checks whether `input_pattern` is safe from ReDoS using explicit options.
 pub fn is_safe_pattern(input_pattern: &str, config: &Config) -> RedosDetectorResult {
+    is_safe_pattern_with_clock(input_pattern, config, SystemClock)
+}
+
+fn is_safe_pattern_with_clock<C: Clock>(
+    input_pattern: &str,
+    config: &Config,
+    clock: C,
+) -> RedosDetectorResult {
     if config.case_insensitive && config.unicode {
         panic!("`caseInsensitive` cannot be used with `unicode`.");
     }
@@ -313,7 +321,7 @@ pub fn is_safe_pattern(input_pattern: &str, config: &Config) -> RedosDetectorRes
             node: ast,
             timeout: config.timeout,
         },
-        SystemClock,
+        clock,
     );
 
     build_result(result, pattern, pattern_downgraded)
@@ -418,4 +426,172 @@ fn to_quantifier_iterations(stack: &[StackEntry]) -> Vec<RedosDetectorQuantifier
             _ => None,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod api_tests {
+    use super::*;
+    use std::cell::Cell;
+
+    fn inf_steps() -> Config {
+        Config {
+            max_score: f64::INFINITY,
+            max_steps: 5000.0,
+            ..Config::default()
+        }
+    }
+
+    /// A clock that advances by one millisecond on each read.
+    struct FakeClock {
+        time: Cell<f64>,
+    }
+
+    impl Clock for FakeClock {
+        fn now(&self) -> f64 {
+            let next = self.time.get() + 1.0;
+            self.time.set(next);
+            next
+        }
+    }
+
+    #[test]
+    fn version_is_crate_version() {
+        assert_eq!(VERSION, env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn respects_max_score() {
+        let config = Config {
+            max_score: 2.0,
+            ..Config::default()
+        };
+        assert_eq!(is_safe("^a?a?$", "", &config).error, None);
+        let config = Config {
+            max_score: 1.0,
+            ..Config::default()
+        };
+        assert_eq!(
+            is_safe("^a?a?$", "", &config).error,
+            Some(RedosDetectorError::HitMaxScore)
+        );
+    }
+
+    #[test]
+    fn respects_max_steps() {
+        let config = Config {
+            max_steps: 20.0,
+            ..Config::default()
+        };
+        assert_eq!(
+            is_safe("a?a?a?", "", &config).error,
+            Some(RedosDetectorError::HitMaxSteps)
+        );
+    }
+
+    #[test]
+    fn respects_timeout() {
+        let config = Config {
+            timeout: 20.0,
+            ..Config::default()
+        };
+        let clock = FakeClock {
+            time: Cell::new(0.0),
+        };
+        let result = is_safe_pattern_with_clock("a?a?a?", &config, clock);
+        assert_eq!(result.error, Some(RedosDetectorError::TimedOut));
+    }
+
+    #[test]
+    #[should_panic(expected = "`maxScore` must be a positive number or 0.")]
+    fn rejects_negative_max_score() {
+        let config = Config {
+            max_score: -1.0,
+            ..Config::default()
+        };
+        let _ = is_safe("a", "", &config);
+    }
+
+    #[test]
+    #[should_panic(expected = "`timeout` must be a positive number.")]
+    fn rejects_zero_timeout() {
+        let config = Config {
+            timeout: 0.0,
+            ..Config::default()
+        };
+        let _ = is_safe("a", "", &config);
+    }
+
+    #[test]
+    #[should_panic(expected = "`maxSteps` must be a positive number.")]
+    fn rejects_zero_max_steps() {
+        let config = Config {
+            max_steps: 0.0,
+            ..Config::default()
+        };
+        let _ = is_safe("a", "", &config);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unsupported flag: z")]
+    fn rejects_unsupported_flag() {
+        let _ = is_safe("a", "z", &Config::default());
+    }
+
+    #[test]
+    fn accepts_supported_flags() {
+        for flag in ["u", "g", "s", "y", "i", "d", "m"] {
+            let _ = is_safe("a", flag, &Config::default());
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "`caseInsensitive` cannot be used with `unicode`.")]
+    fn rejects_case_insensitive_with_unicode() {
+        let config = Config {
+            case_insensitive: true,
+            unicode: true,
+            ..Config::default()
+        };
+        let _ = is_safe_pattern("a", &config);
+    }
+
+    #[test]
+    #[should_panic(expected = "iterations outside JS safe integer range")]
+    fn rejects_iterations_above_max_safe_integer() {
+        let _ = is_safe_pattern("a{0,9007199254740992}", &Config::default());
+    }
+
+    #[test]
+    #[should_panic(expected = "`atomicGroupOffsets` cannot be used with `downgradePattern: true`.")]
+    fn rejects_atomic_offsets_with_downgrade() {
+        let config = Config {
+            downgrade_pattern: true,
+            atomic_group_offsets: Some(HashSet::new()),
+            ..Config::default()
+        };
+        let _ = is_safe_pattern("", &config);
+    }
+
+    #[test]
+    fn supports_atomic_group_offsets() {
+        let mut offsets = HashSet::new();
+        offsets.insert(1);
+        let config = Config {
+            downgrade_pattern: false,
+            atomic_group_offsets: Some(offsets),
+            ..Config::default()
+        };
+        assert!(is_safe_pattern("^(a?)a?$", &config).trails.is_empty());
+    }
+
+    #[test]
+    fn no_options_pattern() {
+        assert_eq!(is_safe_pattern("a", &Config::default()).error, None);
+    }
+
+    #[test]
+    fn flags_override_config() {
+        // The 'i' flag turns on case-insensitive matching regardless of config.
+        let _ = is_safe("a", "i", &inf_steps());
+    }
 }

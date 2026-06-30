@@ -549,3 +549,86 @@ fn walk_all_parallel(
         walk_downgrade(expression, node_stack, &mut copy, None, walker, false);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn missing(pattern: &str) -> bool {
+        let ast = parse(pattern, false).unwrap();
+        is_missing_start_anchor(&ast)
+    }
+
+    #[test]
+    fn is_missing_start_anchor_cases() {
+        assert!(!missing(""));
+        assert!(missing("a"));
+        assert!(!missing("^a"));
+        assert!(!missing("$^a"));
+        assert!(missing("$a"));
+        assert!(missing("a^a"));
+        assert!(!missing("a{0}^a"));
+        assert!(missing("a{0,1}^a"));
+        assert!(missing("a{1}^a"));
+        assert!(missing("^a|b"));
+        assert!(!missing("^a|^b"));
+        assert!(!missing("|"));
+        assert!(!missing("^(a|b)"));
+        assert!(!missing("^ab"));
+        assert!(missing("[ab]^c"));
+        assert!(missing("(^)?c"));
+        assert!(!missing("(^){1}c"));
+        assert!(missing("[^]*a"));
+        assert!(!missing("[^]*?a"));
+        assert!(missing("[^a]*?a"));
+        assert!(missing("[]*?a"));
+        assert!(missing("b*?a"));
+    }
+
+    fn raw(pattern: &str) -> (String, Vec<(String, usize)>) {
+        let ast = parse(pattern, false).unwrap();
+        let result = get_raw_without_capturing_groups_or_lookaheads(&ast);
+        let refs: Vec<(String, usize)> = result
+            .references_with_offset
+            .iter()
+            .map(|(node, offset)| (node.raw.clone(), *offset))
+            .collect();
+        (result.result, refs)
+    }
+
+    #[test]
+    fn get_raw_simple() {
+        let (result, refs) = raw("(a)");
+        assert_eq!(result, "(?:a)");
+        assert!(refs.is_empty());
+    }
+
+    #[test]
+    fn get_raw_every_node_type() {
+        let (result, refs) =
+            raw("^(a)b{1}c+d{1,2}e+(?:f)(?=g)(?!h)(?<=i)(?<!j)(k|l).(m(n))o+?[a\\d]\\1$");
+        assert_eq!(
+            result,
+            "^(?:a)b{1}c+d{1,2}e+(?:f)(?:k|l).(?:m(?:n))o+?[a\\d]\\1$"
+        );
+        assert_eq!(refs, vec![("\\1".to_string(), 51)]);
+    }
+
+    #[test]
+    fn get_raw_multi_reference() {
+        let (result, refs) = raw("()()()()a(\\1)c(d|\\2|f)(?:\\3)(?:\\4)+");
+        assert_eq!(
+            result,
+            "(?:)(?:)(?:)(?:)a(?:\\1)c(?:d|\\2|f)(?:\\3)(?:\\4)+"
+        );
+        assert_eq!(
+            refs,
+            vec![
+                ("\\1".to_string(), 20),
+                ("\\2".to_string(), 29),
+                ("\\3".to_string(), 37),
+                ("\\4".to_string(), 43),
+            ]
+        );
+    }
+}
