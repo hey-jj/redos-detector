@@ -563,3 +563,51 @@ pub(crate) fn get_lookahead_stack(stack: &[StackEntry]) -> Vec<RcNode> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn digit_ranges() {
+        assert_eq!(class_escape_ranges(ClassEscape::D), vec![(48.0, 57.0)]);
+        // \D is the inverse of [0-9].
+        assert_eq!(
+            class_escape_ranges(ClassEscape::DUpper),
+            vec![(f64::NEG_INFINITY, 47.0), (58.0, f64::INFINITY)]
+        );
+    }
+
+    #[test]
+    fn word_ranges() {
+        assert_eq!(
+            class_escape_ranges(ClassEscape::W),
+            vec![(48.0, 57.0), (65.0, 90.0), (95.0, 95.0), (97.0, 122.0)]
+        );
+    }
+
+    #[test]
+    fn whitespace_set_is_exact() {
+        // The \s set is a spec the character groups must match exactly.
+        let expected = vec![
+            (9.0, 9.0),
+            (10.0, 10.0),
+            (11.0, 11.0),
+            (12.0, 12.0),
+            (13.0, 13.0),
+            (32.0, 32.0),
+            (160.0, 160.0),
+            (5760.0, 5760.0),
+            (8192.0, 8202.0),
+            (8232.0, 8233.0),
+            (8239.0, 8239.0),
+            (8287.0, 8287.0),
+            (12288.0, 12288.0),
+            (65279.0, 65279.0),
+        ];
+        assert_eq!(class_escape_ranges(ClassEscape::S), expected);
+        // \S is non-empty and negated relative to the set.
+        let inverse = class_escape_ranges(ClassEscape::SUpper);
+        assert_eq!(inverse.first(), Some(&(f64::NEG_INFINITY, 8.0)));
+    }
+}

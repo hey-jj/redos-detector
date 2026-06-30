@@ -13,9 +13,15 @@
 //! into supported ones.
 //!
 //! Invalid input is reported by panicking with the same message an ECMA-262
-//! engine would surface, matching how the reference design throws. Validation
-//! errors, unsupported flags, oversized quantifier counts, and references that
-//! need downgrading all panic.
+//! engine would surface. Validation errors, unsupported flags, oversized
+//! quantifier counts, and references that need downgrading all panic.
+//!
+//! ```
+//! use redos_detector::{is_safe, Config};
+//!
+//! let result = is_safe("(a+)+$", "", &Config::default());
+//! assert!(!result.safe);
+//! ```
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
