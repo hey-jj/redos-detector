@@ -41,10 +41,7 @@ impl EscapeMap {
 
     /// Returns the negated flag for `key`, if present.
     pub(crate) fn get(&self, key: &str) -> Option<bool> {
-        self.entries
-            .iter()
-            .find(|(k, _)| k == key)
-            .map(|(_, v)| *v)
+        self.entries.iter().find(|(k, _)| k == key).map(|(_, v)| *v)
     }
 
     /// Returns the number of entries.

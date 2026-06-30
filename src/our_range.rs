@@ -133,10 +133,7 @@ mod tests {
         let inf = f64::INFINITY;
         let ninf = f64::NEG_INFINITY;
         assert_eq!(invert_ranges(&[]), vec![(ninf, inf)]);
-        assert_eq!(
-            invert_ranges(&[(0.0, 0.0)]),
-            vec![(ninf, -1.0), (1.0, inf)]
-        );
+        assert_eq!(invert_ranges(&[(0.0, 0.0)]), vec![(ninf, -1.0), (1.0, inf)]);
         assert_eq!(invert_ranges(&[(1.0, 2.0)]), vec![(ninf, 0.0), (3.0, inf)]);
         assert_eq!(
             invert_ranges(&[(1.0, 2.0), (3.0, 4.0)]),

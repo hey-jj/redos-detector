@@ -12,11 +12,13 @@
 #![warn(missing_docs)]
 
 mod arrays;
+mod ast;
 mod character_groups;
 mod code_point;
 mod map;
 mod once;
 mod our_range;
+mod parse;
 mod result_cache;
 mod sets;
 mod tree;
