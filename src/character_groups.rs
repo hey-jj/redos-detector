@@ -53,6 +53,11 @@ impl EscapeMap {
     pub(crate) fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+
+    /// Returns the entries in insertion order.
+    pub(crate) fn as_vec(&self) -> Vec<(String, bool)> {
+        self.entries.clone()
+    }
 }
 
 /// A set of code points.
@@ -64,6 +69,13 @@ pub(crate) struct CharacterGroups {
     pub(crate) ranges: Vec<OurRange>,
     /// Unicode property escapes carried alongside the ranges.
     pub(crate) unicode_property_escapes: EscapeMap,
+}
+
+impl CharacterGroups {
+    /// Returns the property escapes as an ordered key/value list.
+    pub(crate) fn escapes_vec(&self) -> Vec<(String, bool)> {
+        self.unicode_property_escapes.as_vec()
+    }
 }
 
 /// Returns `true` when the group definitely matches no characters.
