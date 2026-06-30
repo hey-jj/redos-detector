@@ -585,8 +585,8 @@ impl<C: Clock> CheckerReader<C> {
                 Step::Value(_) => {
                     self.step_count += 0.5;
                     if self.step_count > self.settings.max_steps {
-                        // The left check breaks the outer loop; the right one is
-                        // marked unreachable upstream but treated the same.
+                        // Both the left and right checks stop the outer loop the
+                        // same way when the step cap is hit.
                         let _ = is_left;
                         return UnboundedResult::HitMax;
                     }
