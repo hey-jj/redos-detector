@@ -9,13 +9,13 @@ use crate::{AnalysisLimit, Report, Score, TrailEntrySide};
 const TRUNCATE_LENGTH: usize = 100;
 
 /// Default number of trails to print.
-pub const DEFAULT_RESULTS_LIMIT: f64 = 15.0;
+pub const DEFAULT_RESULTS_LIMIT: u64 = 15;
 
 /// Options for [`to_friendly`].
 #[derive(Clone, Debug)]
 pub struct ToFriendlyConfig {
-    /// The maximum number of trails to print.
-    pub results_limit: f64,
+    /// The maximum number of trails to print. `None` prints every trail.
+    pub results_limit: Option<u64>,
     /// Always include trails even when the pattern is safe.
     pub always_include_trails: bool,
 }
@@ -23,7 +23,7 @@ pub struct ToFriendlyConfig {
 impl Default for ToFriendlyConfig {
     fn default() -> Self {
         ToFriendlyConfig {
-            results_limit: DEFAULT_RESULTS_LIMIT,
+            results_limit: Some(DEFAULT_RESULTS_LIMIT),
             always_include_trails: false,
         }
     }
@@ -71,9 +71,9 @@ fn score_string(score: Score) -> String {
 
 /// Renders `result` as text.
 ///
-/// A negative `results_limit` is treated as `0`.
+/// `results_limit` of `None` prints every trail.
 pub fn to_friendly(result: &Report, config: &ToFriendlyConfig) -> String {
-    let results_limit = config.results_limit.max(0.0);
+    let results_limit = config.results_limit;
     let score_str = score_string(result.score);
 
     if result.is_safe() && !config.always_include_trails {
@@ -104,11 +104,7 @@ pub fn to_friendly(result: &Report, config: &ToFriendlyConfig) -> String {
         }
         output_lines.push(parts.join(" "));
     } else {
-        let limit = if results_limit.is_infinite() {
-            result.trails.len()
-        } else {
-            results_limit as usize
-        };
+        let limit = results_limit.map_or(result.trails.len(), |n| n as usize);
         let result_blocks: Vec<String> =
             result.trails.iter().take(limit).map(render_block).collect();
 
@@ -118,7 +114,7 @@ pub fn to_friendly(result: &Report, config: &ToFriendlyConfig) -> String {
             score_str
         ));
 
-        if results_limit > 0.0 {
+        if results_limit != Some(0) {
             output_lines.push(String::new());
             let plural = if result.trails.len() > 1 { "s" } else { "" };
             let singular = if result.trails.len() == 1 { "s" } else { "" };
@@ -131,7 +127,7 @@ pub fn to_friendly(result: &Report, config: &ToFriendlyConfig) -> String {
             if let Some(error) = result.error {
                 output_lines.push(error_message(error).to_string());
             }
-            if result.trails.len() as f64 > results_limit {
+            if results_limit.is_some_and(|n| result.trails.len() as u64 > n) {
                 output_lines
                     .push("There are more results than this but hit results limit.".to_string());
             }

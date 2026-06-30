@@ -19,8 +19,8 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 
 fn run(source: &str, flags: &str) -> Report {
     let config = Config {
-        max_score: f64::INFINITY,
-        max_steps: 5000.0,
+        max_score: None,
+        max_steps: Some(5000),
         ..Config::default()
     };
     is_safe(source, flags, &config).expect("case should not error")
@@ -155,8 +155,8 @@ fn behavior_table() {
 #[test]
 fn exact_trail_counts() {
     let config = Config {
-        max_score: f64::INFINITY,
-        max_steps: 5000.0,
+        max_score: None,
+        max_steps: Some(5000),
         ..Config::default()
     };
 
@@ -190,8 +190,8 @@ fn no_anchor_unbounded_side_does_not_inflate() {
     // DFS keeps walking and surfaces extra trails. This case is the minimal
     // witness: two trails and score 2, not eight and three.
     let config = Config {
-        max_score: f64::INFINITY,
-        max_steps: 5000.0,
+        max_score: None,
+        max_steps: Some(5000),
         ..Config::default()
     };
     let result = is_safe("^(aa)*a?(aaa)?", "", &config).unwrap();

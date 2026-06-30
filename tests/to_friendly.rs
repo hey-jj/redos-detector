@@ -92,14 +92,14 @@ fn result(
     }
 }
 
-fn cfg(always: bool, limit: f64) -> ToFriendlyConfig {
+fn cfg(always: bool, limit: Option<u64>) -> ToFriendlyConfig {
     ToFriendlyConfig {
         always_include_trails: always,
         results_limit: limit,
     }
 }
 
-const LIMIT: f64 = 15.0;
+const LIMIT: Option<u64> = Some(15);
 
 const TRAILS_BLOCK: &str = "3: `a` | 1: `a`
 ===============
@@ -255,7 +255,7 @@ fn unsafe_with_trails() {
             mock_trails(),
         );
         assert_eq!(
-            to_friendly(&r, &cfg(always, 0.0)),
+            to_friendly(&r, &cfg(always, Some(0))),
             "Pattern was downgraded to `pattern`.\nRegex is not safe. There could be infinite backtracks."
         );
 
@@ -267,24 +267,21 @@ fn unsafe_with_trails() {
             true,
             mock_trails(),
         );
-        assert_eq!(to_friendly(&r, &cfg(always, 1.0)), limited);
+        assert_eq!(to_friendly(&r, &cfg(always, Some(1))), limited);
     }
 }
 
 #[test]
-fn negative_results_limit_clamps_to_zero() {
+fn none_results_limit_prints_every_trail() {
     let r = result(
         Some(AnalysisLimit::HitMaxSteps),
         Score::Infinite,
         true,
         mock_trails(),
     );
-    // A negative limit is treated as 0, so no trails are printed.
-    let zero = to_friendly(&r, &cfg(false, 0.0));
-    let negative = to_friendly(&r, &cfg(false, -1.0));
-    assert_eq!(negative, zero);
-    assert_eq!(
-        negative,
-        "Pattern was downgraded to `pattern`.\nRegex is not safe. There could be infinite backtracks."
-    );
+    // `None` prints every trail and never adds the limit note.
+    let unlimited = to_friendly(&r, &cfg(false, None));
+    let all = to_friendly(&r, &cfg(false, Some(mock_trails().len() as u64)));
+    assert_eq!(unlimited, all);
+    assert!(!unlimited.contains("hit results limit"));
 }

@@ -2,8 +2,8 @@ use redos_detector::{is_safe, Config, Score};
 
 fn check(source: &str, flags: &str) -> redos_detector::Report {
     let config = Config {
-        max_score: f64::INFINITY,
-        max_steps: 5000.0,
+        max_score: None,
+        max_steps: Some(5000),
         ..Config::default()
     };
     is_safe(source, flags, &config).unwrap()

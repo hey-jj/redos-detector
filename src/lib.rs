@@ -54,6 +54,7 @@ use crate::checker_reader::{Clock, Trail as CheckerTrail};
 use crate::collect_results::{collect_results, CollectInput};
 use crate::downgrade_pattern::is_missing_start_anchor;
 use std::collections::HashSet;
+use std::time::Duration;
 
 pub use crate::downgrade_pattern::{downgrade_pattern, DowngradedRegexPattern};
 pub use crate::to_friendly::{to_friendly, ToFriendlyConfig};
@@ -61,12 +62,10 @@ pub use crate::to_friendly::{to_friendly, ToFriendlyConfig};
 /// The package version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Default timeout: never time out.
-pub const DEFAULT_TIMEOUT: f64 = f64::INFINITY;
 /// Default score cap.
-pub const DEFAULT_MAX_SCORE: f64 = 200.0;
+pub const DEFAULT_MAX_SCORE: u64 = 200;
 /// Default step cap.
-pub const DEFAULT_MAX_STEPS: f64 = 20000.0;
+pub const DEFAULT_MAX_STEPS: u64 = 20000;
 /// Default multi-line mode.
 pub const DEFAULT_MULTI_LINE: bool = false;
 /// Default unicode mode.
@@ -215,11 +214,9 @@ pub enum Error {
     CaseInsensitiveWithUnicode,
     /// `atomic_group_offsets` was set together with `downgrade_pattern: true`.
     AtomicGroupOffsetsWithDowngrade,
-    /// `timeout` was zero or negative.
+    /// `timeout` was zero.
     InvalidTimeout,
-    /// `max_score` was negative.
-    InvalidMaxScore,
-    /// `max_steps` was zero or negative.
+    /// `max_steps` was zero.
     InvalidMaxSteps,
     /// The pattern failed to parse. The string is the parser message.
     Parse(String),
@@ -239,7 +236,6 @@ impl std::fmt::Display for Error {
                 "`atomicGroupOffsets` cannot be used with `downgradePattern: true`."
             ),
             Error::InvalidTimeout => write!(f, "`timeout` must be a positive number."),
-            Error::InvalidMaxScore => write!(f, "`maxScore` must be a positive number or 0."),
             Error::InvalidMaxSteps => write!(f, "`maxSteps` must be a positive number."),
             Error::Parse(message) => write!(f, "{}", message),
             Error::MissingStartAnchor => write!(
@@ -255,12 +251,13 @@ impl std::error::Error for Error {}
 /// Options for [`is_safe`] and [`is_safe_pattern`].
 #[derive(Clone, Debug)]
 pub struct Config {
-    /// The score cap. Above this the pattern is considered unsafe.
-    pub max_score: f64,
-    /// The step cap.
-    pub max_steps: f64,
-    /// The timeout in milliseconds.
-    pub timeout: f64,
+    /// The score cap. Above this the pattern is considered unsafe. `None` means
+    /// no cap.
+    pub max_score: Option<u64>,
+    /// The step cap. `None` means no cap.
+    pub max_steps: Option<u64>,
+    /// The wall-clock budget. `None` means no timeout.
+    pub timeout: Option<Duration>,
     /// Case-insensitive mode.
     pub case_insensitive: bool,
     /// Dot-all mode.
@@ -279,9 +276,9 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            max_score: DEFAULT_MAX_SCORE,
-            max_steps: DEFAULT_MAX_STEPS,
-            timeout: DEFAULT_TIMEOUT,
+            max_score: Some(DEFAULT_MAX_SCORE),
+            max_steps: Some(DEFAULT_MAX_STEPS),
+            timeout: None,
             case_insensitive: DEFAULT_CASE_INSENSITIVE,
             dot_all: DEFAULT_DOT_ALL,
             multi_line: DEFAULT_MULTI_LINE,
@@ -354,6 +351,18 @@ pub fn is_safe_pattern(input_pattern: &str, config: &Config) -> Result<Report, E
     is_safe_pattern_with_clock(input_pattern, config, SystemClock)
 }
 
+/// Maps a count cap to the float the collector compares against. `None` becomes
+/// positive infinity, which never trips the cap.
+fn cap_to_f64(cap: Option<u64>) -> f64 {
+    cap.map_or(f64::INFINITY, |value| value as f64)
+}
+
+/// Maps a timeout to milliseconds for the checker clock. `None` becomes positive
+/// infinity, which never times out.
+fn timeout_to_f64(timeout: Option<Duration>) -> f64 {
+    timeout.map_or(f64::INFINITY, |duration| duration.as_secs_f64() * 1000.0)
+}
+
 fn is_safe_pattern_with_clock<C: Clock>(
     input_pattern: &str,
     config: &Config,
@@ -365,13 +374,10 @@ fn is_safe_pattern_with_clock<C: Clock>(
     if config.downgrade_pattern && config.atomic_group_offsets.is_some() {
         return Err(Error::AtomicGroupOffsetsWithDowngrade);
     }
-    if config.timeout <= 0.0 {
+    if config.timeout == Some(Duration::ZERO) {
         return Err(Error::InvalidTimeout);
     }
-    if config.max_score < 0.0 {
-        return Err(Error::InvalidMaxScore);
-    }
-    if config.max_steps <= 0.0 {
+    if config.max_steps == Some(0) {
         return Err(Error::InvalidMaxSteps);
     }
 
@@ -398,11 +404,11 @@ fn is_safe_pattern_with_clock<C: Clock>(
             atomic_group_offsets,
             case_insensitive: config.case_insensitive,
             dot_all: config.dot_all,
-            max_score: config.max_score,
-            max_steps: config.max_steps,
+            max_score: cap_to_f64(config.max_score),
+            max_steps: cap_to_f64(config.max_steps),
             multi_line: config.multi_line,
             node: ast,
-            timeout: config.timeout,
+            timeout: timeout_to_f64(config.timeout),
         },
         clock,
     );
@@ -513,8 +519,8 @@ mod api_tests {
 
     fn inf_steps() -> Config {
         Config {
-            max_score: f64::INFINITY,
-            max_steps: 5000.0,
+            max_score: None,
+            max_steps: Some(5000),
             ..Config::default()
         }
     }
@@ -540,12 +546,12 @@ mod api_tests {
     #[test]
     fn respects_max_score() {
         let config = Config {
-            max_score: 2.0,
+            max_score: Some(2),
             ..Config::default()
         };
         assert_eq!(is_safe("^a?a?$", "", &config).unwrap().error, None);
         let config = Config {
-            max_score: 1.0,
+            max_score: Some(1),
             ..Config::default()
         };
         assert_eq!(
@@ -557,7 +563,7 @@ mod api_tests {
     #[test]
     fn respects_max_steps() {
         let config = Config {
-            max_steps: 20.0,
+            max_steps: Some(20),
             ..Config::default()
         };
         assert_eq!(
@@ -569,7 +575,7 @@ mod api_tests {
     #[test]
     fn respects_timeout() {
         let config = Config {
-            timeout: 20.0,
+            timeout: Some(Duration::from_millis(20)),
             ..Config::default()
         };
         let clock = FakeClock {
@@ -580,18 +586,9 @@ mod api_tests {
     }
 
     #[test]
-    fn rejects_negative_max_score() {
-        let config = Config {
-            max_score: -1.0,
-            ..Config::default()
-        };
-        assert_eq!(is_safe("a", "", &config), Err(Error::InvalidMaxScore));
-    }
-
-    #[test]
     fn rejects_zero_timeout() {
         let config = Config {
-            timeout: 0.0,
+            timeout: Some(Duration::ZERO),
             ..Config::default()
         };
         assert_eq!(is_safe("a", "", &config), Err(Error::InvalidTimeout));
@@ -600,7 +597,7 @@ mod api_tests {
     #[test]
     fn rejects_zero_max_steps() {
         let config = Config {
-            max_steps: 0.0,
+            max_steps: Some(0),
             ..Config::default()
         };
         assert_eq!(is_safe("a", "", &config), Err(Error::InvalidMaxSteps));
