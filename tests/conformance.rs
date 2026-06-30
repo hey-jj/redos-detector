@@ -13,10 +13,10 @@
 mod cases_data;
 
 use cases_data::{Exp, CASES, TRAIL_COUNTS};
-use redos_detector::{downgrade_pattern, is_safe, Config, RedosDetectorResult, Score};
+use redos_detector::{downgrade_pattern, is_safe, Config, Report, Score};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-fn run(source: &str, flags: &str) -> RedosDetectorResult {
+fn run(source: &str, flags: &str) -> Report {
     let config = Config {
         max_score: f64::INFINITY,
         max_steps: 5000.0,
@@ -70,7 +70,7 @@ fn behavior_table() {
                         result.trails.len()
                     ));
                 }
-                if result.score != Score::Finite(1.0) {
+                if result.score != Score::Finite(1) {
                     failures.push(format!("{label}: expected score 1, got {:?}", result.score));
                 }
             }
@@ -96,7 +96,7 @@ fn behavior_table() {
             ));
         }
 
-        if result.safe != result.error.is_none() {
+        if result.is_safe() != result.error.is_none() {
             failures.push(format!("{label}: safe must equal error.is_none()"));
         }
 
@@ -194,12 +194,12 @@ fn no_anchor_unbounded_side_does_not_inflate() {
     };
     let result = is_safe("^(aa)*a?(aaa)?", "", &config);
     assert_eq!(result.trails.len(), 2);
-    assert_eq!(result.score, Score::Finite(2.0));
-    assert!(result.safe);
+    assert_eq!(result.score, Score::Finite(2));
+    assert!(result.is_safe());
     assert_eq!(result.error, None);
 
     // The end-anchored form reaches a bounded end, so it keeps its trails.
     let control = is_safe("^(aa)*(aaa)?$", "", &config);
     assert_eq!(control.trails.len(), 4);
-    assert_eq!(control.score, Score::Finite(3.0));
+    assert_eq!(control.score, Score::Finite(3));
 }

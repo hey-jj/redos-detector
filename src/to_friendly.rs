@@ -4,7 +4,7 @@
 //! measured in UTF-16 code units to match the engine the analysis targets, and
 //! breadcrumbs are joined with the arrow `→`.
 
-use crate::{RedosDetectorError, RedosDetectorResult, RedosDetectorTrailEntrySide, Score};
+use crate::{AnalysisLimit, Report, Score, TrailEntrySide};
 
 const TRUNCATE_LENGTH: usize = 100;
 
@@ -51,7 +51,7 @@ fn pad_end(s: &str, width: usize) -> String {
     }
 }
 
-fn get_breadcrumbs(side: &RedosDetectorTrailEntrySide) -> String {
+fn get_breadcrumbs(side: &TrailEntrySide) -> String {
     let mut parts: Vec<String> = side
         .backreference_stack
         .iter()
@@ -65,26 +65,18 @@ fn get_breadcrumbs(side: &RedosDetectorTrailEntrySide) -> String {
 fn score_string(score: Score) -> String {
     match score {
         Score::Infinite => "There could be infinite backtracks.".to_string(),
-        Score::Finite(value) => format!("Score: {}", format_number(value)),
-    }
-}
-
-fn format_number(value: f64) -> String {
-    if value.fract() == 0.0 {
-        format!("{}", value as i64)
-    } else {
-        format!("{}", value)
+        Score::Finite(value) => format!("Score: {}", value),
     }
 }
 
 /// Renders `result` as text.
-pub fn to_friendly(result: &RedosDetectorResult, config: &ToFriendlyConfig) -> String {
+pub fn to_friendly(result: &Report, config: &ToFriendlyConfig) -> String {
     if config.results_limit < 0.0 {
         panic!("`resultsLimit` must be > 0.");
     }
     let score_str = score_string(result.score);
 
-    if result.safe && !config.always_include_trails {
+    if result.is_safe() && !config.always_include_trails {
         return format!("Regex is safe. {}", score_str);
     }
 
@@ -96,18 +88,18 @@ pub fn to_friendly(result: &RedosDetectorResult, config: &ToFriendlyConfig) -> S
 
     if result.trails.is_empty() {
         let mut parts: Vec<String> = Vec::new();
-        parts.push(if result.safe {
+        parts.push(if result.is_safe() {
             format!("Regex is safe. {}", score_str)
         } else {
             format!("Regex may not be safe. {}", score_str)
         });
-        if result.error == Some(RedosDetectorError::TimedOut) {
+        if result.error == Some(AnalysisLimit::TimedOut) {
             parts.push("Timed out.".to_string());
         }
-        if result.error == Some(RedosDetectorError::HitMaxSteps) {
+        if result.error == Some(AnalysisLimit::HitMaxSteps) {
             parts.push("Reached steps limit.".to_string());
         }
-        if !result.safe {
+        if !result.is_safe() {
             parts.push("The pattern may have too many variations.".to_string());
         }
         output_lines.push(parts.join(" "));
@@ -122,7 +114,7 @@ pub fn to_friendly(result: &RedosDetectorResult, config: &ToFriendlyConfig) -> S
 
         output_lines.push(format!(
             "Regex is {}safe. {}",
-            if !result.safe { "not " } else { "" },
+            if !result.is_safe() { "not " } else { "" },
             score_str
         ));
 
@@ -149,9 +141,9 @@ pub fn to_friendly(result: &RedosDetectorResult, config: &ToFriendlyConfig) -> S
     output_lines.join("\n")
 }
 
-fn render_block(trail: &crate::RedosDetectorTrail) -> String {
+fn render_block(trail: &crate::Trail) -> String {
     let row_contents: Vec<[String; 4]> = trail
-        .trail
+        .entries
         .iter()
         .take(TRUNCATE_LENGTH)
         .map(|entry| {
@@ -193,7 +185,7 @@ fn render_block(trail: &crate::RedosDetectorTrail) -> String {
         })
         .collect();
 
-    if trail.trail.len() > TRUNCATE_LENGTH {
+    if trail.entries.len() > TRUNCATE_LENGTH {
         rows.push("\u{2026}".to_string());
     }
 
@@ -203,14 +195,14 @@ fn render_block(trail: &crate::RedosDetectorTrail) -> String {
     rows.join("\n")
 }
 
-fn error_message(error: RedosDetectorError) -> &'static str {
+fn error_message(error: AnalysisLimit) -> &'static str {
     match error {
-        RedosDetectorError::HitMaxScore => {
+        AnalysisLimit::HitMaxScore => {
             "Hit the max score so there may be more results than shown here."
         }
-        RedosDetectorError::HitMaxSteps => {
+        AnalysisLimit::HitMaxSteps => {
             "Hit maximum number of steps so there may be more results than shown here."
         }
-        RedosDetectorError::TimedOut => "Timed out so there may be more results than shown here.",
+        AnalysisLimit::TimedOut => "Timed out so there may be more results than shown here.",
     }
 }

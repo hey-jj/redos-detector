@@ -20,7 +20,7 @@
 //! use redos_detector::{is_safe, Config};
 //!
 //! let result = is_safe("(a+)+$", "", &Config::default());
-//! assert!(!result.safe);
+//! assert!(!result.is_safe());
 //! ```
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -48,7 +48,7 @@ mod tree;
 
 use crate::ast::{NodeKind, RcNode};
 use crate::character_reader::level0::StackEntry;
-use crate::checker_reader::{Clock, Trail};
+use crate::checker_reader::{Clock, Trail as CheckerTrail};
 use crate::collect_results::{collect_results, CollectInput};
 use crate::downgrade_pattern::is_missing_start_anchor;
 use std::collections::HashSet;
@@ -76,70 +76,73 @@ pub const DEFAULT_DOT_ALL: bool = false;
 
 /// A location in the checked pattern. The first character has offset `0`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct RedosDetectorNodeLocation {
+pub struct NodeLocation {
     /// The UTF-16 offset.
     pub offset: usize,
 }
 
 /// A node in the checked pattern.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RedosDetectorNode {
+pub struct Node {
     /// The end location (exclusive).
-    pub end: RedosDetectorNodeLocation,
+    pub end: NodeLocation,
     /// The node's source text.
     pub source: String,
     /// The start location (inclusive).
-    pub start: RedosDetectorNodeLocation,
+    pub start: NodeLocation,
 }
 
 /// A backreference in a trail side.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RedosDetectorBackReference {
+pub struct BackReference {
     /// The 1-based index of the group the backreference points at.
     pub index: u64,
     /// The backreference node.
-    pub node: RedosDetectorNode,
+    pub node: Node,
 }
 
 /// A quantifier iteration in a trail side.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RedosDetectorQuantifierIteration {
+pub struct QuantifierIteration {
     /// The iteration number. The first iteration is `0`.
     pub iteration: u64,
     /// The quantifier node.
-    pub node: RedosDetectorNode,
+    pub node: Node,
 }
 
 /// One side of a trail entry.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RedosDetectorTrailEntrySide {
+pub struct TrailEntrySide {
     /// The backreference stack the node is part of, outermost last.
-    pub backreference_stack: Vec<RedosDetectorBackReference>,
+    pub backreference_stack: Vec<BackReference>,
     /// The node.
-    pub node: RedosDetectorNode,
+    pub node: Node,
     /// The iteration of each quantifier the node is part of.
-    pub quantifier_iterations: Vec<RedosDetectorQuantifierIteration>,
+    pub quantifier_iterations: Vec<QuantifierIteration>,
 }
 
 /// A trail entry showing two ways through the pattern side by side.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RedosDetectorTrailEntry {
+pub struct TrailEntry {
     /// The `a` side.
-    pub a: RedosDetectorTrailEntrySide,
+    pub a: TrailEntrySide,
     /// The `b` side.
-    pub b: RedosDetectorTrailEntrySide,
+    pub b: TrailEntrySide,
 }
 
 /// A trail: a pair of distinct ways to match the same input.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RedosDetectorTrail {
+pub struct Trail {
     /// The entries of the trail.
-    pub trail: Vec<RedosDetectorTrailEntry>,
+    pub entries: Vec<TrailEntry>,
 }
 
 /// The error reported for an unsafe result.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RedosDetectorError {
+///
+/// Match with a wildcard arm. New limits may be added in a future version.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum AnalysisLimit {
     /// The score passed the cap.
     HitMaxScore,
     /// The step cap was hit.
@@ -158,29 +161,39 @@ pub(crate) enum CheckError {
 }
 
 /// A score. `Finite` carries the count; `Infinite` means unbounded backtracking.
-#[derive(Clone, Copy, Debug, PartialEq)]
+///
+/// A score is a count of distinct ways to match the same input prefix, so it is
+/// a whole number.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Score {
     /// A finite count.
-    Finite(f64),
+    Finite(u64),
     /// Unbounded backtracking.
     Infinite,
 }
 
 /// The result of a check.
 #[derive(Clone, Debug)]
-pub struct RedosDetectorResult {
+pub struct Report {
     /// The error, or `None` when safe.
-    pub error: Option<RedosDetectorError>,
+    pub error: Option<AnalysisLimit>,
     /// The checked pattern, downgraded if needed.
     pub pattern: String,
     /// Whether the pattern was downgraded.
     pub pattern_downgraded: bool,
-    /// Whether the pattern is safe (`error` is `None`).
-    pub safe: bool,
     /// The score.
     pub score: Score,
     /// The discovered trails.
-    pub trails: Vec<RedosDetectorTrail>,
+    pub trails: Vec<Trail>,
+}
+
+impl Report {
+    /// Whether the pattern is safe. A pattern is safe when no analysis limit
+    /// was hit.
+    pub fn is_safe(&self) -> bool {
+        self.error.is_none()
+    }
 }
 
 /// Options for [`is_safe`] and [`is_safe_pattern`].
@@ -240,7 +253,7 @@ impl Clock for SystemClock {
 /// `regex` is a `source/flags` pair like `"a+a+/i"`. Flags are read from the
 /// part after the last `/`. The flags `u i s m` change matching; `g y d` are
 /// accepted and ignored. An unsupported flag panics.
-pub fn is_safe(source: &str, flags: &str, config: &Config) -> RedosDetectorResult {
+pub fn is_safe(source: &str, flags: &str, config: &Config) -> Report {
     let mut unicode = false;
     let mut case_insensitive = false;
     let mut dot_all = false;
@@ -269,15 +282,11 @@ pub fn is_safe(source: &str, flags: &str, config: &Config) -> RedosDetectorResul
 }
 
 /// Checks whether `input_pattern` is safe from ReDoS using explicit options.
-pub fn is_safe_pattern(input_pattern: &str, config: &Config) -> RedosDetectorResult {
+pub fn is_safe_pattern(input_pattern: &str, config: &Config) -> Report {
     is_safe_pattern_with_clock(input_pattern, config, SystemClock)
 }
 
-fn is_safe_pattern_with_clock<C: Clock>(
-    input_pattern: &str,
-    config: &Config,
-    clock: C,
-) -> RedosDetectorResult {
+fn is_safe_pattern_with_clock<C: Clock>(input_pattern: &str, config: &Config, clock: C) -> Report {
     if config.case_insensitive && config.unicode {
         panic!("`caseInsensitive` cannot be used with `unicode`.");
     }
@@ -336,15 +345,10 @@ fn build_result(
     result: collect_results::CollectResults,
     pattern: String,
     pattern_downgraded: bool,
-) -> RedosDetectorResult {
-    let trails = result
-        .trails
-        .iter()
-        .map(map_trail)
-        .collect::<Vec<RedosDetectorTrail>>();
+) -> Report {
+    let trails = result.trails.iter().map(map_trail).collect::<Vec<Trail>>();
 
-    RedosDetectorResult {
-        safe: result.error.is_none(),
+    Report {
         error: result.error,
         pattern,
         pattern_downgraded,
@@ -353,17 +357,17 @@ fn build_result(
     }
 }
 
-fn map_trail(trail: &Trail) -> RedosDetectorTrail {
-    RedosDetectorTrail {
-        trail: trail
+fn map_trail(trail: &CheckerTrail) -> Trail {
+    Trail {
+        entries: trail
             .iter()
-            .map(|entry| RedosDetectorTrailEntry {
-                a: RedosDetectorTrailEntrySide {
+            .map(|entry| TrailEntry {
+                a: TrailEntrySide {
                     backreference_stack: to_backreference_stack(&entry.right.stack),
                     node: to_node(&entry.right.node),
                     quantifier_iterations: to_quantifier_iterations(&entry.right.stack),
                 },
-                b: RedosDetectorTrailEntrySide {
+                b: TrailEntrySide {
                     backreference_stack: to_backreference_stack(&entry.left.stack),
                     node: to_node(&entry.left.node),
                     quantifier_iterations: to_quantifier_iterations(&entry.left.stack),
@@ -373,19 +377,19 @@ fn map_trail(trail: &Trail) -> RedosDetectorTrail {
     }
 }
 
-fn to_node(node: &RcNode) -> RedosDetectorNode {
-    RedosDetectorNode {
-        end: RedosDetectorNodeLocation {
+fn to_node(node: &RcNode) -> Node {
+    Node {
+        end: NodeLocation {
             offset: node.range.1,
         },
         source: node.raw.clone(),
-        start: RedosDetectorNodeLocation {
+        start: NodeLocation {
             offset: node.range.0,
         },
     }
 }
 
-fn to_backreference_stack(stack: &[StackEntry]) -> Vec<RedosDetectorBackReference> {
+fn to_backreference_stack(stack: &[StackEntry]) -> Vec<BackReference> {
     let mut references: Vec<RcNode> = stack
         .iter()
         .filter_map(|entry| match entry {
@@ -401,7 +405,7 @@ fn to_backreference_stack(stack: &[StackEntry]) -> Vec<RedosDetectorBackReferenc
                 NodeKind::Reference { match_index } => *match_index,
                 _ => 0,
             };
-            RedosDetectorBackReference {
+            BackReference {
                 index,
                 node: to_node(reference),
             }
@@ -409,7 +413,7 @@ fn to_backreference_stack(stack: &[StackEntry]) -> Vec<RedosDetectorBackReferenc
         .collect()
 }
 
-fn to_quantifier_iterations(stack: &[StackEntry]) -> Vec<RedosDetectorQuantifierIteration> {
+fn to_quantifier_iterations(stack: &[StackEntry]) -> Vec<QuantifierIteration> {
     let reversed: Vec<&StackEntry> = stack.iter().rev().collect();
     let reference_index = reversed
         .iter()
@@ -424,7 +428,7 @@ fn to_quantifier_iterations(stack: &[StackEntry]) -> Vec<RedosDetectorQuantifier
             StackEntry::Quantifier {
                 iteration,
                 quantifier,
-            } => Some(RedosDetectorQuantifierIteration {
+            } => Some(QuantifierIteration {
                 iteration: *iteration,
                 node: to_node(quantifier),
             }),
@@ -477,7 +481,7 @@ mod api_tests {
         };
         assert_eq!(
             is_safe("^a?a?$", "", &config).error,
-            Some(RedosDetectorError::HitMaxScore)
+            Some(AnalysisLimit::HitMaxScore)
         );
     }
 
@@ -489,7 +493,7 @@ mod api_tests {
         };
         assert_eq!(
             is_safe("a?a?a?", "", &config).error,
-            Some(RedosDetectorError::HitMaxSteps)
+            Some(AnalysisLimit::HitMaxSteps)
         );
     }
 
@@ -503,7 +507,7 @@ mod api_tests {
             time: Cell::new(0.0),
         };
         let result = is_safe_pattern_with_clock("a?a?a?", &config, clock);
-        assert_eq!(result.error, Some(RedosDetectorError::TimedOut));
+        assert_eq!(result.error, Some(AnalysisLimit::TimedOut));
     }
 
     #[test]

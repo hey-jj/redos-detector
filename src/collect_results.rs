@@ -17,7 +17,7 @@ use crate::node_extra::build_node_extra;
 use crate::reader::{Reader, Step};
 use crate::result_cache::ResultCache;
 use crate::tree::Tree;
-use crate::{CheckError, RedosDetectorError, Score};
+use crate::{AnalysisLimit, CheckError, Score};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -127,7 +127,7 @@ impl EnhancedTrail {
 /// The result of running the collector.
 pub(crate) struct CollectResults {
     /// The error, if any.
-    pub(crate) error: Option<RedosDetectorError>,
+    pub(crate) error: Option<AnalysisLimit>,
     /// The discovered trails.
     pub(crate) trails: Vec<Trail>,
     /// The score, where `None` means infinite.
@@ -238,28 +238,28 @@ pub(crate) fn collect_results<C: Clock>(input: CollectInput, clock: C) -> Collec
         }
     }
 
-    let mut error: Option<RedosDetectorError> = None;
-    let mut final_score = Score::Finite(score);
+    let mut error: Option<AnalysisLimit> = None;
+    let mut final_score = Score::Finite(score as u64);
     if let Some(ret) = final_return {
         match ret {
             CheckerReturn::Error(CheckError::HitMaxSteps) => {
                 final_score = Score::Infinite;
-                error = Some(RedosDetectorError::HitMaxSteps);
+                error = Some(AnalysisLimit::HitMaxSteps);
             }
             CheckerReturn::Error(CheckError::TimedOut) => {
                 final_score = Score::Infinite;
-                error = Some(RedosDetectorError::TimedOut);
+                error = Some(AnalysisLimit::TimedOut);
             }
             CheckerReturn::Ok { infinite } => {
                 if infinite {
                     final_score = Score::Infinite;
-                    error = Some(RedosDetectorError::HitMaxScore);
+                    error = Some(AnalysisLimit::HitMaxScore);
                 }
             }
         }
     } else if hit_max_score {
         final_score = Score::Infinite;
-        error = Some(RedosDetectorError::HitMaxScore);
+        error = Some(AnalysisLimit::HitMaxScore);
     }
 
     let trails: Vec<Trail> = trails_tree

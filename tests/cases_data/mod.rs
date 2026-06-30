@@ -5,7 +5,7 @@ pub use trail_counts::TRAIL_COUNTS;
 pub enum Exp {
     Safe,
     Unsafe,
-    Score(f64),
+    Score(u64),
 }
 
 pub struct Case {
@@ -501,8 +501,8 @@ pub const CASES: &[Case] = &[
     Case { source: "\\s+", flags: "", expected: Exp::Safe, missing_anchor: true, infinite: false },
     Case { source: "(a+)+", flags: "", expected: Exp::Safe, missing_anchor: true, infinite: false },
     Case { source: "(a+)+$", flags: "", expected: Exp::Unsafe, missing_anchor: true, infinite: false },
-    Case { source: "^(?:-(?:[a-z][a-z\\d]{4,7}|\\d[a-z\\d]{3,7}))*(?:_[^x](?:_[a-z\\d]{2}(_[a-z\\d]{3,8})*)+)?$", flags: "", expected: Exp::Score(2.0), missing_anchor: false, infinite: false },
-    Case { source: "^(?:-(?:[a-z][a-z\\d]{4,7}|\\d[a-z\\d]{3,7}))*(?:_[^x](?:_[a-z\\d]{2}(_[a-z\\d]{3,8}){0,5})+)?$", flags: "", expected: Exp::Score(2.0), missing_anchor: false, infinite: false },
-    Case { source: "^(?:-(?:[a-z][a-z\\d]{4,7}|\\d[a-z\\d]{3,7}))*(?:_[^x](?:_[a-z\\d]{2}(_[a-z\\d]{3,8}){0,2})+)?$", flags: "", expected: Exp::Score(2.0), missing_anchor: false, infinite: false },
-    Case { source: "^(?:-(?:[a-z][a-z\\d]{4,7}|\\d[a-z\\d]{3,7}))*(?:_[^x](?:_[a-z\\d]{2}(_[a-z\\d]{3,8}){0,2}){1,5})?$", flags: "", expected: Exp::Score(2.0), missing_anchor: false, infinite: false },
+    Case { source: "^(?:-(?:[a-z][a-z\\d]{4,7}|\\d[a-z\\d]{3,7}))*(?:_[^x](?:_[a-z\\d]{2}(_[a-z\\d]{3,8})*)+)?$", flags: "", expected: Exp::Score(2), missing_anchor: false, infinite: false },
+    Case { source: "^(?:-(?:[a-z][a-z\\d]{4,7}|\\d[a-z\\d]{3,7}))*(?:_[^x](?:_[a-z\\d]{2}(_[a-z\\d]{3,8}){0,5})+)?$", flags: "", expected: Exp::Score(2), missing_anchor: false, infinite: false },
+    Case { source: "^(?:-(?:[a-z][a-z\\d]{4,7}|\\d[a-z\\d]{3,7}))*(?:_[^x](?:_[a-z\\d]{2}(_[a-z\\d]{3,8}){0,2})+)?$", flags: "", expected: Exp::Score(2), missing_anchor: false, infinite: false },
+    Case { source: "^(?:-(?:[a-z][a-z\\d]{4,7}|\\d[a-z\\d]{3,7}))*(?:_[^x](?:_[a-z\\d]{2}(_[a-z\\d]{3,8}){0,2}){1,5})?$", flags: "", expected: Exp::Score(2), missing_anchor: false, infinite: false },
 ];

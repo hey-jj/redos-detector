@@ -22,7 +22,7 @@ redos-detector = "0.1"
 use redos_detector::{is_safe, Config};
 
 let result = is_safe("(a+)+$", "", &Config::default());
-if !result.safe {
+if !result.is_safe() {
     println!("{}", redos_detector::to_friendly(&result, &Default::default()));
 }
 ```

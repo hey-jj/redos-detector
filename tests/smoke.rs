@@ -1,6 +1,6 @@
 use redos_detector::{is_safe, Config, Score};
 
-fn check(source: &str, flags: &str) -> redos_detector::RedosDetectorResult {
+fn check(source: &str, flags: &str) -> redos_detector::Report {
     let config = Config {
         max_score: f64::INFINITY,
         max_steps: 5000.0,
@@ -18,8 +18,8 @@ fn safe_simple() {
         "expected no trails, got {}",
         r.trails.len()
     );
-    assert_eq!(r.score, Score::Finite(1.0));
-    assert!(r.safe);
+    assert_eq!(r.score, Score::Finite(1));
+    assert!(r.is_safe());
 }
 
 #[test]
@@ -39,5 +39,5 @@ fn star_star_safe() {
     let r = check("^(a*)*", "");
     assert!(r.error.is_none());
     assert!(r.trails.is_empty());
-    assert_eq!(r.score, Score::Finite(1.0));
+    assert_eq!(r.score, Score::Finite(1));
 }
