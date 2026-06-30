@@ -7,7 +7,7 @@
 use crate::ast::RcNode;
 use crate::character_groups::CharacterGroups;
 use crate::character_reader::level0::{
-    build_character_reader, CharacterReader, CharacterReaderValue, Stack, StackEntry,
+    build_character_reader, CharacterReader, CharacterReaderValue, Stack,
 };
 use crate::reader::{BoxReader, Reader, Step};
 use std::rc::Rc;
@@ -166,18 +166,4 @@ pub(crate) fn build_character_reader_level1(
         build_character_reader(case_insensitive, dot_all, node),
         Vec::new(),
     )
-}
-
-/// Returns the quantifier frames present in a stack, as a `(quantifier, iteration)` list.
-pub(crate) fn quantifier_frames(stack: &[StackEntry]) -> Vec<(RcNode, u64)> {
-    stack
-        .iter()
-        .filter_map(|entry| match entry {
-            StackEntry::Quantifier {
-                iteration,
-                quantifier,
-            } => Some((quantifier.clone(), *iteration)),
-            _ => None,
-        })
-        .collect()
 }

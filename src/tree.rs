@@ -13,9 +13,12 @@ struct TreeNode<K> {
     result_slot: Option<usize>,
 }
 
+/// A function that decodes a value into its key sequence.
+type Decode<T, K> = Box<dyn Fn(&T) -> Vec<K>>;
+
 /// A trie keyed by the decoded sequence of each value.
 pub(crate) struct Tree<T, K: Eq + Hash + Clone> {
-    decode: Box<dyn Fn(&T) -> Vec<K>>,
+    decode: Decode<T, K>,
     nodes: Vec<TreeNode<K>>,
     results: Vec<Option<T>>,
 }

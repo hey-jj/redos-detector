@@ -44,11 +44,6 @@ impl EscapeMap {
         self.entries.iter().find(|(k, _)| k == key).map(|(_, v)| *v)
     }
 
-    /// Returns the number of entries.
-    pub(crate) fn len(&self) -> usize {
-        self.entries.len()
-    }
-
     /// Returns `true` when there are no entries.
     pub(crate) fn is_empty(&self) -> bool {
         self.entries.is_empty()

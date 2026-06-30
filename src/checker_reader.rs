@@ -10,7 +10,7 @@ use crate::ast::{NodeKind, RcNode};
 use crate::character_groups::{
     intersect_character_groups, is_empty_character_groups, CharacterGroups,
 };
-use crate::character_reader::level0::{SplitSubType, StackEntry};
+use crate::character_reader::level0::StackEntry;
 use crate::character_reader::level1::{ZeroWidthEntry, ZeroWidthKind};
 use crate::character_reader::level2::{Level2Reader, Level2Return, Level2Value};
 use crate::infinite_loop_tracker::{Entry, InfiniteLoopTracker};
@@ -309,10 +309,7 @@ impl<C: Clock> CheckerReader<C> {
                 return None;
             }
 
-            let frame = match self.stack.pop() {
-                Some(frame) => frame,
-                None => return None,
-            };
+            let frame = self.stack.pop()?;
 
             let StackFrame {
                 infinite_loop_tracker,
@@ -323,18 +320,14 @@ impl<C: Clock> CheckerReader<C> {
             // Pull both readers, handling splits by branching the DFS.
             let mut next_values: Vec<Step<Level2Value, Level2Return>> = Vec::new();
             let mut split_index: Option<usize> = None;
-            for i in 0..stream_readers.len() {
+            for (i, sr) in stream_readers.iter_mut().enumerate() {
                 self.step_count += 0.5;
-                let is_split = matches!(
-                    stream_readers[i].get(),
-                    Step::Value(Level2Value::Split { .. })
-                );
+                let is_split = matches!(sr.get(), Step::Value(Level2Value::Split { .. }));
                 if is_split {
                     split_index = Some(i);
                     break;
                 }
-                let value = stream_readers[i].get().clone_step();
-                next_values.push(value);
+                next_values.push(sr.get().clone_step());
             }
             if let Some(i) = split_index {
                 self.handle_split(i, &infinite_loop_tracker, stream_readers, &trail);

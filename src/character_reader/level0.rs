@@ -6,7 +6,7 @@ use crate::character_reader::join::{join, join_array, JoinAction};
 use crate::character_reader::map::map;
 use crate::code_point::{build_code_point_ranges, to_upper_case_code_point};
 use crate::our_range::{invert_ranges, OurRange};
-use crate::reader::{build_array_reader, chain_readers, empty_reader, BoxReader, Reader, Step};
+use crate::reader::{build_array_reader, chain_readers, empty_reader, BoxReader};
 use std::rc::Rc;
 
 /// A lookaround marker on a split.
@@ -562,12 +562,4 @@ pub(crate) fn get_lookahead_stack(stack: &[StackEntry]) -> Vec<RcNode> {
             _ => None,
         })
         .collect()
-}
-
-// Re-export the reader trait method so callers can poll without importing.
-impl dyn Reader<CharacterReaderValue, ()> {
-    /// Polls the reader by one step.
-    pub(crate) fn step(&mut self) -> Step<CharacterReaderValue, ()> {
-        self.next()
-    }
 }

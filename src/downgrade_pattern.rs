@@ -211,7 +211,7 @@ fn check_anchor(node: &RcNode) -> AnchorCheck {
         }
         NodeKind::Disjunction { body } => {
             let results: Vec<AnchorCheck> = body.iter().map(check_anchor).collect();
-            if results.iter().any(|r| *r == AnchorCheck::ConsumingNode) {
+            if results.contains(&AnchorCheck::ConsumingNode) {
                 AnchorCheck::ConsumingNode
             } else if results.iter().all(|r| *r == AnchorCheck::Anchor) {
                 AnchorCheck::Anchor

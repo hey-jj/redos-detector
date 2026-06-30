@@ -1,15 +1,5 @@
 //! Small slice helpers used across the analyzer.
 
-/// Returns the last element, or `None` when the slice is empty.
-pub(crate) fn last<T: Copy>(input: &[T]) -> Option<T> {
-    input.last().copied()
-}
-
-/// Returns `true` when both slices have the same length and equal elements.
-pub(crate) fn are_arrays_equal<T: PartialEq>(a: &[T], b: &[T]) -> bool {
-    a == b
-}
-
 /// Strips the common prefix of two slices and returns the remaining tails.
 ///
 /// The comparison walks both slices in lockstep and stops at the first index
@@ -25,22 +15,6 @@ pub(crate) fn drop_common<'a, T: PartialEq>(a: &'a [T], b: &'a [T]) -> (&'a [T],
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn last_works() {
-        assert_eq!(last::<i32>(&[]), None);
-        assert_eq!(last(&[0]), Some(0));
-        assert_eq!(last(&[0, 1]), Some(1));
-    }
-
-    #[test]
-    fn are_arrays_equal_works() {
-        assert!(are_arrays_equal::<i32>(&[], &[]));
-        assert!(are_arrays_equal(&[1], &[1]));
-        assert!(!are_arrays_equal(&[1], &[]));
-        assert!(!are_arrays_equal(&[1], &[1, 2]));
-        assert!(are_arrays_equal(&[1, 2], &[1, 2]));
-    }
 
     #[test]
     fn drop_common_works() {

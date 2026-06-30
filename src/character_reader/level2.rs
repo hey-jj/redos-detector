@@ -39,8 +39,6 @@ pub(crate) enum Level2Value {
 pub(crate) struct Level2Entry {
     /// The character set.
     pub(crate) character_groups: CharacterGroups,
-    /// The capturing groups this entry is inside.
-    pub(crate) groups: Vec<RcNode>,
     /// The lookaround groups this entry is inside, in stack order.
     pub(crate) lookahead_stack: Vec<RcNode>,
     /// The AST node that produced the character.
@@ -54,11 +52,8 @@ pub(crate) struct Level2Entry {
 /// A level-2 return value.
 #[derive(Clone, Debug)]
 pub(crate) enum Level2Return {
-    /// The pattern ended.
-    End {
-        bounded: bool,
-        preceding_zero_width_entries: Vec<ZeroWidthEntry>,
-    },
+    /// The pattern ended. `bounded` is `true` for a hard `$`.
+    End { bounded: bool },
     /// The reader bailed out of an empty-reference loop.
     Abort,
 }
@@ -173,10 +168,9 @@ impl Reader<Level2Value, Level2Return> for Level2ReaderImpl {
         loop {
             let state = self.state.as_mut().expect("level 2 polled after end");
 
-            let active = if state.reference_reader.is_some() {
-                &mut state.reference_reader.as_mut().unwrap().0
-            } else {
-                &mut state.character_reader
+            let active = match state.reference_reader.as_mut() {
+                Some((reader, _)) => reader,
+                None => &mut state.character_reader,
             };
 
             let result = active.next();
@@ -193,12 +187,9 @@ impl Reader<Level2Value, Level2Return> for Level2ReaderImpl {
                         state.reference_reader = None;
                         continue;
                     }
-                    let mut preceding = std::mem::take(&mut state.preceding_zero_width_entries);
-                    preceding.extend(ret.preceding_zero_width_entries);
                     self.state = None;
                     return Step::Done(Level2Return::End {
                         bounded: ret.bounded,
-                        preceding_zero_width_entries: preceding,
                     });
                 }
                 Step::Value(value) => match value {
@@ -275,7 +266,6 @@ impl Reader<Level2Value, Level2Return> for Level2ReaderImpl {
                             .extend(preceding_zero_width_entries);
                         let quantifier_iterations = build_quantifier_iterations(&stack);
                         let lookahead_stack = get_lookahead_stack(&stack);
-                        let groups = get_groups(&stack);
 
                         let inside_reference = state.reference_reader.is_some();
                         record_groups_entry(
@@ -291,7 +281,6 @@ impl Reader<Level2Value, Level2Return> for Level2ReaderImpl {
                         let preceding = std::mem::take(&mut state.preceding_zero_width_entries);
                         return Step::Value(Level2Value::Entry(Level2Entry {
                             character_groups,
-                            groups,
                             lookahead_stack,
                             node,
                             preceding_zero_width_entries: preceding,

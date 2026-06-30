@@ -362,9 +362,7 @@ impl<'a> Parser<'a> {
                     min = m;
                     max = mx;
                     matched = true;
-                    if (min > 0 && min > MAX_SAFE_INTEGER)
-                        || max.map(|v| v > 0 && v > MAX_SAFE_INTEGER).unwrap_or(false)
-                    {
+                    if min > MAX_SAFE_INTEGER || max.is_some_and(|v| v > MAX_SAFE_INTEGER) {
                         return Err(ParseError(
                             "iterations outside JS safe integer range in quantifier".to_string(),
                         ));
@@ -417,10 +415,7 @@ impl<'a> Parser<'a> {
         if i == digits_start {
             return None;
         }
-        let min = match self.parse_uint(digits_start, i) {
-            Some(v) => v,
-            None => return None,
-        };
+        let min = self.parse_uint(digits_start, i)?;
         match self.unit(i) {
             Some(c) if c == '}' as u16 => Some((min, Some(min), i + 1 - self.pos)),
             Some(c) if c == ',' as u16 => {

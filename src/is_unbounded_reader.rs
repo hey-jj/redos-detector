@@ -9,7 +9,7 @@ use crate::character_groups::{
     intersect_character_groups, is_empty_character_groups, CharacterGroups, EscapeMap,
 };
 use crate::character_reader::level0::SplitSubType;
-use crate::character_reader::level2::{Level2Reader, Level2Return, Level2Value};
+use crate::character_reader::level2::{Level2Return, Level2Value};
 use crate::reader::{ForkableReader, Reader, Step};
 
 /// A step marker yielded by [`IsUnboundedReader`].

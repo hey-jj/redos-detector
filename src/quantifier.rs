@@ -1,6 +1,6 @@
 //! Quantifier accounting used by the readers and the checker.
 
-use crate::ast::{GroupBehavior, NodeKind, RcNode};
+use crate::ast::{GroupBehavior, NodeKind};
 use crate::character_reader::level0::StackEntry;
 use crate::map::must_get;
 use crate::node_extra::NodeExtra;
