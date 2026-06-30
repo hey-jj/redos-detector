@@ -483,17 +483,17 @@ impl<C: Clock> CheckerReader<C> {
             let sides_equal = are_sides_equal(&new_entry.left, &new_entry.right);
             let mut emitted: Option<Trail> = None;
             if !sides_equal {
-                let left_unbounded = self.run_unbounded_check(&stream_readers[0].reader, true);
+                let left_unbounded = self.run_unbounded_check(&stream_readers[0].reader);
                 if left_unbounded == UnboundedResult::Unbounded {
-                    self.push_continue(tracker, stream_readers, trail);
+                    // A side that can reach a non-bounded end is not a real
+                    // ambiguity. Drop the branch with no continuation frame.
                     continue;
                 }
                 if left_unbounded == UnboundedResult::HitMax {
                     return None;
                 }
-                let right_unbounded = self.run_unbounded_check(&stream_readers[1].reader, false);
+                let right_unbounded = self.run_unbounded_check(&stream_readers[1].reader);
                 if right_unbounded == UnboundedResult::Unbounded {
-                    self.push_continue(tracker, stream_readers, trail);
                     continue;
                 }
                 if right_unbounded == UnboundedResult::HitMax {
@@ -577,7 +577,6 @@ impl<C: Clock> CheckerReader<C> {
     fn run_unbounded_check(
         &mut self,
         reader: &ForkableReader<Level2Value, Level2Return>,
-        is_left: bool,
     ) -> UnboundedResult {
         let mut unbounded_reader = IsUnboundedReader::new(self.settings.multi_line, reader);
         loop {
@@ -585,9 +584,6 @@ impl<C: Clock> CheckerReader<C> {
                 Step::Value(_) => {
                     self.step_count += 0.5;
                     if self.step_count > self.settings.max_steps {
-                        // Both the left and right checks stop the outer loop the
-                        // same way when the step cap is hit.
-                        let _ = is_left;
                         return UnboundedResult::HitMax;
                     }
                 }

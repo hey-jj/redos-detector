@@ -1,4 +1,7 @@
 // Generated from the canonical behavior table. Do not edit by hand.
+mod trail_counts;
+pub use trail_counts::TRAIL_COUNTS;
+
 pub enum Exp {
     Safe,
     Unsafe,

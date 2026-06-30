@@ -4,10 +4,15 @@
 //! checks the safe/unsafe verdict, the score for the exact cases, and the
 //! downgrade cross-checks. The throw cases are checked by catching the panic the
 //! library raises.
+//!
+//! `exact_trail_counts` pins the number of trails per pattern against the
+//! canonical table. Verdict-only checks miss drift that changes trail
+//! enumeration or score without flipping safe to unsafe, so this test guards the
+//! checker against that class of regression.
 
 mod cases_data;
 
-use cases_data::{Exp, CASES};
+use cases_data::{Exp, CASES, TRAIL_COUNTS};
 use redos_detector::{downgrade_pattern, is_safe, Config, RedosDetectorResult, Score};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -143,4 +148,58 @@ fn behavior_table() {
         failures.len(),
         failures.join("\n")
     );
+}
+
+#[test]
+fn exact_trail_counts() {
+    let config = Config {
+        max_score: f64::INFINITY,
+        max_steps: 5000.0,
+        ..Config::default()
+    };
+
+    let mut failures: Vec<String> = Vec::new();
+    for case in TRAIL_COUNTS {
+        let result = is_safe(case.source, case.flags, &config);
+        if result.trails.len() != case.trails {
+            failures.push(format!(
+                "/{}/{}: expected {} trails, got {}",
+                case.source,
+                case.flags,
+                case.trails,
+                result.trails.len()
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "{} trail-count mismatches:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+#[test]
+fn no_anchor_unbounded_side_does_not_inflate() {
+    // A pattern with no end anchor downgrades to `[^]*?...`, so the checker runs
+    // the differing-vs-unbounded side path. A side that can reach a non-bounded
+    // end is not a real ambiguity and must drop its branch. Without that, the
+    // DFS keeps walking and surfaces extra trails. This case is the minimal
+    // witness: two trails and score 2, not eight and three.
+    let config = Config {
+        max_score: f64::INFINITY,
+        max_steps: 5000.0,
+        ..Config::default()
+    };
+    let result = is_safe("^(aa)*a?(aaa)?", "", &config);
+    assert_eq!(result.trails.len(), 2);
+    assert_eq!(result.score, Score::Finite(2.0));
+    assert!(result.safe);
+    assert_eq!(result.error, None);
+
+    // The end-anchored form reaches a bounded end, so it keeps its trails.
+    let control = is_safe("^(aa)*(aaa)?$", "", &config);
+    assert_eq!(control.trails.len(), 4);
+    assert_eq!(control.score, Score::Finite(3.0));
 }
