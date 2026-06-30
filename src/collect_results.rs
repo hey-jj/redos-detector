@@ -60,8 +60,8 @@ impl EnhancedTrail {
             }),
             empty_cache,
         }));
-        let clone = Rc::clone(&enhanced);
-        enhanced.borrow_mut().on_new_trail(&clone.borrow());
+        let own_trail = enhanced.borrow().trail.clone();
+        enhanced.borrow_mut().on_new_trail(&own_trail);
         enhanced
     }
 
@@ -105,10 +105,10 @@ impl EnhancedTrail {
         }
     }
 
-    fn on_new_trail(&mut self, other: &EnhancedTrail) {
+    fn on_new_trail(&mut self, other_trail: &Trail) {
         let mut left_side: Vec<TrailEntrySide> = Vec::new();
         let mut right_side: Vec<TrailEntrySide> = Vec::new();
-        for entry in &other.trail {
+        for entry in other_trail {
             left_side.push(entry.left.clone());
             right_side.push(entry.right.clone());
         }
@@ -205,14 +205,10 @@ pub(crate) fn collect_results<C: Clock>(input: CollectInput, clock: C) -> Collec
                             if work >= WORK_LIMIT {
                                 break;
                             }
-                            {
-                                let existing_ref = existing.borrow();
-                                trail.borrow_mut().on_new_trail(&existing_ref);
-                            }
-                            {
-                                let trail_ref = trail.borrow();
-                                existing.borrow_mut().on_new_trail(&trail_ref);
-                            }
+                            let existing_trail = existing.borrow().trail.clone();
+                            let new_trail = trail.borrow().trail.clone();
+                            trail.borrow_mut().on_new_trail(&existing_trail);
+                            existing.borrow_mut().on_new_trail(&new_trail);
                             let m = existing.borrow().matches_len() as f64;
                             if m > score {
                                 score = m;
