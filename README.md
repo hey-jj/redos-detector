@@ -35,10 +35,22 @@ ones. `to_friendly(result, config)` renders a result as text.
 
 ## Behavior
 
-The analyzer targets ECMA-262 semantics. Offsets are UTF-16 code unit indices.
-Backreferences to unmatched groups are treated as the empty string, following
-JavaScript. Case folding uses the ECMA-262 simple-uppercase rule in non-unicode
-mode.
+The analyzer targets a subset of ECMA-262 semantics. Offsets are UTF-16 code
+unit indices. Backreferences to unmatched groups are treated as the empty
+string, following JavaScript. Case folding uses the ECMA-262 simple-uppercase
+rule in non-unicode mode.
+
+The supported grammar is literals, character classes, escapes, groups including
+lookbehind, quantifiers, anchors, numbered backreferences, and unicode property
+escapes in unicode mode. Named groups, modifier groups, and the `v` flag are not
+supported. The `i` and `u` flags cannot be combined.
+
+The score is a severity, not a yes/no flag. `is_safe()` is true when no analysis
+limit was hit, so the verdict is a threshold on the score, not `score > 1`. A
+pattern with finite super-linear ambiguity such as `^a?a?a?a?$` scores `6` and
+reads as safe when `max_score` is `None`. Set `max_score` to the level of
+backtracking you will tolerate. The default cap catches this polynomial blowup;
+raising or removing the cap lets it through.
 
 Recoverable input problems return `Error`: an unsupported flag, a conflicting
 config, or a pattern that fails to parse. A successful check returns a `Report`.
