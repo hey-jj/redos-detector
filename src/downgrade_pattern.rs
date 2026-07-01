@@ -298,7 +298,7 @@ fn run(
     };
 
     let mut passed = false;
-    walk_downgrade(&ast, &[], &mut passed, None, &mut walker, true);
+    walk_downgrade(&ast, &[], &mut passed, None, &mut walker);
 
     let mut new_pattern = last.pattern.clone();
     let mut atomic_group_offsets = last.atomic_group_offsets.clone();
@@ -381,7 +381,6 @@ fn walk_downgrade(
     passed_start_anchor: &mut bool,
     immediately_preceding_lookahead: Option<&RcNode>,
     walker: &mut Walker,
-    _serial: bool,
 ) {
     let on_consuming_node = |passed: &bool, walker: &mut Walker| {
         if !passed {
@@ -535,7 +534,6 @@ fn walk_all_serial(
             passed_start_anchor,
             just_had_lookahead.as_ref(),
             walker,
-            true,
         );
         just_had_lookahead = match &expression.kind {
             NodeKind::Group {
@@ -555,7 +553,7 @@ fn walk_all_parallel(
 ) {
     for expression in nodes {
         let mut copy = *passed_start_anchor;
-        walk_downgrade(expression, node_stack, &mut copy, None, walker, false);
+        walk_downgrade(expression, node_stack, &mut copy, None, walker);
     }
 }
 

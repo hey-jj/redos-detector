@@ -10,30 +10,23 @@ use crate::reader::{build_array_reader, chain_readers, empty_reader, BoxReader};
 use std::rc::Rc;
 use std::sync::LazyLock;
 
-/// A lookaround marker on a split.
+/// A lookaround marker on a split. Consumers only distinguish a plain branch
+/// from a lookaround, so the specific lookaround kind is not tracked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SplitSubType {
     /// A plain branch (disjunction or quantifier stop).
     None,
-    /// A positive lookahead.
-    Lookahead,
-    /// A negative lookahead.
-    NegativeLookahead,
-    /// A positive lookbehind.
-    Lookbehind,
-    /// A negative lookbehind.
-    NegativeLookbehind,
+    /// A lookahead or lookbehind, positive or negative.
+    Lookaround,
 }
 
 impl SplitSubType {
     /// Maps a group behavior to the matching split sub-type.
     pub(crate) fn from_behavior(behavior: GroupBehavior) -> Self {
-        match behavior {
-            GroupBehavior::Lookahead => SplitSubType::Lookahead,
-            GroupBehavior::NegativeLookahead => SplitSubType::NegativeLookahead,
-            GroupBehavior::Lookbehind => SplitSubType::Lookbehind,
-            GroupBehavior::NegativeLookbehind => SplitSubType::NegativeLookbehind,
-            _ => SplitSubType::None,
+        if behavior.is_lookaround() {
+            SplitSubType::Lookaround
+        } else {
+            SplitSubType::None
         }
     }
 }
