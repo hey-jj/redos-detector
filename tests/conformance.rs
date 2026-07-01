@@ -15,7 +15,6 @@ mod cases_data;
 
 use cases_data::{Exp, CASES, TRAIL_COUNTS};
 use redos_detector::{downgrade_pattern, is_safe, Config, Error, Report, Score};
-use std::panic::{catch_unwind, AssertUnwindSafe};
 
 fn run(source: &str, flags: &str) -> Report {
     let config = Config {
@@ -24,32 +23,6 @@ fn run(source: &str, flags: &str) -> Report {
         ..Config::default()
     };
     is_safe(source, flags, &config).expect("case should not error")
-}
-
-fn panic_message<F: FnOnce()>(f: F) -> Option<String> {
-    let result = catch_unwind(AssertUnwindSafe(f));
-    match result {
-        Ok(()) => None,
-        Err(payload) => {
-            if let Some(s) = payload.downcast_ref::<String>() {
-                Some(s.clone())
-            } else if let Some(s) = payload.downcast_ref::<&str>() {
-                Some(s.to_string())
-            } else {
-                Some(String::new())
-            }
-        }
-    }
-}
-
-fn unsupported_reference_message(message: &str) -> bool {
-    let a = message.starts_with("Unsupported reference (")
-        && message.ends_with("). Pattern needs downgrading. See the `downgradePattern` option.");
-    let b = message.starts_with("Unsupported reference to group ")
-        && message.ends_with(
-            " as group is not a finite size. Pattern needs downgrading. See the `downgradePattern` option.",
-        );
-    a || b
 }
 
 #[test]
@@ -124,20 +97,16 @@ fn behavior_table() {
                 )),
             }
         } else if needed_downgrade {
-            // With downgrade off, an unsupported reference panics deep in the
-            // reader. This is a precondition violation of `downgrade_pattern:
-            // false`, so it stays a panic rather than a recoverable error.
-            let msg = panic_message(|| {
-                let config = Config {
-                    downgrade_pattern: false,
-                    ..Config::default()
-                };
-                let _ = is_safe(case.source, case.flags, &config);
-            });
-            match msg {
-                Some(m) if unsupported_reference_message(&m) => {}
+            // With downgrade off, an unsupported reference is a recoverable
+            // error, not a panic.
+            let config = Config {
+                downgrade_pattern: false,
+                ..Config::default()
+            };
+            match is_safe(case.source, case.flags, &config) {
+                Err(Error::UnsupportedReference) => {}
                 other => failures.push(format!(
-                    "{label}: expected unsupported-reference throw, got {:?}",
+                    "{label}: expected UnsupportedReference, got {:?}",
                     other
                 )),
             }

@@ -1,4 +1,4 @@
-use redos_detector::{is_safe, Config, Score};
+use redos_detector::{is_safe, is_safe_pattern, Config, Error, Score};
 
 fn check(source: &str, flags: &str) -> redos_detector::Report {
     let config = Config {
@@ -40,4 +40,19 @@ fn star_star_safe() {
     assert!(r.error.is_none());
     assert!(r.trails.is_empty());
     assert_eq!(r.score, Score::Finite(1));
+}
+
+#[test]
+fn unsupported_reference_returns_error() {
+    let config = Config {
+        downgrade_pattern: false,
+        ..Config::default()
+    };
+    for pattern in [r"^(a+)\1", r"^(\w+)\1$"] {
+        assert_eq!(
+            is_safe_pattern(pattern, &config),
+            Err(Error::UnsupportedReference),
+            "pattern {pattern:?} should return an error"
+        );
+    }
 }

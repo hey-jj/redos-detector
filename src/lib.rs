@@ -144,7 +144,10 @@ pub struct Trail {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum AnalysisLimit {
-    /// The score passed the cap.
+    /// The score reached or passed the cap. This covers two cases that both
+    /// report `Score::Infinite`: a finite count that crossed `max_score`, and a
+    /// pattern the checker proved has unbounded backtracking (seen even with
+    /// `max_score: None`).
     HitMaxScore,
     /// The step cap was hit.
     HitMaxSteps,
@@ -222,6 +225,10 @@ pub enum Error {
     Parse(String),
     /// `downgrade_pattern` was off and the pattern has no start anchor.
     MissingStartAnchor,
+    /// `downgrade_pattern` was off and the pattern has a backreference the
+    /// analyzer cannot handle without downgrading, such as a reference to a
+    /// group of unbounded size.
+    UnsupportedReference,
 }
 
 impl std::fmt::Display for Error {
@@ -241,6 +248,10 @@ impl std::fmt::Display for Error {
             Error::MissingStartAnchor => write!(
                 f,
                 "Pattern is not bounded at the start and needs downgrading. See the `downgradePattern` option."
+            ),
+            Error::UnsupportedReference => write!(
+                f,
+                "Pattern has an unsupported reference and needs downgrading. See the `downgradePattern` option."
             ),
         }
     }
@@ -395,8 +406,17 @@ fn is_safe_pattern_with_clock<C: Clock>(
 
     let ast = parse::parse(&pattern, config.unicode).map_err(|e| Error::Parse(e.0))?;
 
-    if !config.downgrade_pattern && is_missing_start_anchor(&ast) {
-        return Err(Error::MissingStartAnchor);
+    if !config.downgrade_pattern {
+        if is_missing_start_anchor(&ast) {
+            return Err(Error::MissingStartAnchor);
+        }
+        // The analyzer panics on references it cannot follow without a rewrite.
+        // Downgrading rewrites exactly those references, so a pattern the
+        // downgrade would change (after ruling out the missing-anchor rewrite
+        // above) is one the analyzer cannot handle here.
+        if downgrade_pattern(input_pattern, config.unicode)?.pattern != input_pattern {
+            return Err(Error::UnsupportedReference);
+        }
     }
 
     let result = collect_results(
