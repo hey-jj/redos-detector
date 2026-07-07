@@ -18,7 +18,6 @@ use crate::is_unbounded_reader::IsUnboundedReader;
 use crate::node_extra::NodeExtra;
 use crate::quantifier::build_quantifiers_in_infinite_portion;
 use crate::reader::{build_forkable_reader, ForkableReader, Reader, Step};
-use crate::sets::are_sets_equal;
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -473,10 +472,9 @@ impl<C: Clock> CheckerReader<C> {
                 continue;
             }
 
-            if !are_sets_equal(
-                &new_entry.left.atomic_groups_entered_together,
-                &new_entry.right.atomic_groups_entered_together,
-            ) {
+            if new_entry.left.atomic_groups_entered_together
+                != new_entry.right.atomic_groups_entered_together
+            {
                 continue;
             }
 

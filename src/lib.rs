@@ -44,7 +44,6 @@ mod parse;
 mod quantifier;
 mod reader;
 mod result_cache;
-mod sets;
 mod to_friendly;
 mod tree;
 
