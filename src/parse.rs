@@ -611,6 +611,9 @@ impl<'a> Parser<'a> {
                 if self.first_iteration {
                     self.should_reparse = true;
                 }
+                if self.unicode && !self.first_iteration {
+                    return Err(ParseError("Invalid escape".to_string()));
+                }
                 // Reset and re-match octal digits only.
                 self.pos = start;
                 let octal_start = self.pos;
@@ -850,7 +853,13 @@ impl<'a> Parser<'a> {
             let to = self.pos;
             let rest = self.parse_class_contents()?;
 
-            let mut res = if atom.code_point().is_some() && atom_to.code_point().is_some() {
+            let mut res = if let (Some(min), Some(max)) = (atom.code_point(), atom_to.code_point())
+            {
+                if min > max {
+                    return Err(ParseError(
+                        "Range out of order in character class".to_string(),
+                    ));
+                }
                 vec![self.node(
                     (from, to),
                     NodeKind::CharacterClassRange {
